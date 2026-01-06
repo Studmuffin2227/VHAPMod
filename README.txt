@@ -20,4 +20,4 @@ A: Methods like Essentials, E4MC, or hosting a server may or may not work, I'm n
 Q: I completed a check, but forgot to connect to the APworld, is the check lost?
 A: As the code currently is, yes. The check tries to send, but is lost as it has nowhere to go. (Offline check completion will be developed before release)
 
-Any further questions can be asked inside the archipelago discord server, inside the future-game-development post for Vaulthunters.
+Any further questions can be asked inside the archipelago discord server, inside the future-game-development post for VaultHunters.
