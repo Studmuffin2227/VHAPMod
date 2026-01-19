@@ -241,25 +241,20 @@ public class APWebSocketClient implements WebSocket.Listener {
 
             if (slotData.has("vault_chest_checks")) {
                 int chestChecks = slotData.get("vault_chest_checks").getAsInt();
-                //APAwareLootModifier.setChestCheckCount(chestChecks);
+                vhManager.setTotalChestChecks(chestChecks);
                 LOGGER.info("✓ Chest checks: {}", chestChecks);
             }
 
             if (slotData.has("wooden_chest_weight")) {
                 float weight = slotData.get("wooden_chest_weight").getAsFloat();
-                //APAwareLootModifier.setWoodenChestWeight(weight);
+                vhManager.setWoodenChestWeight(weight);
                 LOGGER.info("✓ Wooden chest weight: {}%", (int)(weight * 100));
             }
 
             if (slotData.has("normal_chest_weight")) {
                 float weight = slotData.get("normal_chest_weight").getAsFloat();
-                //APAwareLootModifier.setNormalChestWeight(weight);
+                vhManager.setNormalChestWeight(weight);
                 LOGGER.info("✓ Normal chest weight: {}%", (int)(weight * 100));
-            }
-
-            if (slotData.has("goal_level")) {
-                goalLevel = slotData.get("goal_level").getAsInt();
-                LOGGER.info("★ GOAL: Reach level {} to win!", goalLevel);
             }
         }
 

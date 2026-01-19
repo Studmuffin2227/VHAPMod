@@ -3,29 +3,54 @@ package com.example.vhapmod.mixin;
 import com.example.vhapmod.VaultHuntersAPMod;
 import com.example.vhapmod.VaultHuntersManager;
 import com.example.vhapmod.item.ModItems;
-import iskallia.vault.block.entity.VaultChestTileEntity;
-import iskallia.vault.core.Version;
-import iskallia.vault.core.random.RandomSource;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.List;
+import java.util.Random;
 
 /**
  * Intercepts Vault Hunters chest loot generation to add Archipelago checks
+ *
+ * STRATEGY: Counter-based progressive checks with CHANCE
+ * - Only SOME chests give checks (configurable %)
+ * - But the checks are still numbered: "Vault Chest 1", "Vault Chest 2", etc.
+ * - Player might open 10 chests before finding check #1
+ * - Then open 5 more before finding check #2
  */
-@Mixin(value = VaultChestTileEntity.class, remap = false)
-public class VaultChestLootMixin {
+@Mixin(targets = "iskallia.vault.block.entity.VaultChestTileEntity", remap = false)
+public abstract class VaultChestLootMixin extends BlockEntity {
 
     private static final Logger LOGGER = LogManager.getLogger();
+
+
+    VaultHuntersManager manager = VaultHuntersAPMod.getManager();
+
+    // Get the Chance of a check appearing from the manager
+    float checkChance = manager.getNormalChestWeight();
+
+
+    // Use Java's Random for the chance roll
+    private static final Random RANDOM = new Random();
+
+    // Required constructor for extending BlockEntity
+    public VaultChestLootMixin() {
+        super(null, null, null);
+    }
+
+    // Shadow the getBlockPos method from the chest
+    @Shadow
+    public abstract BlockPos getBlockPos();
 
     /**
      * Inject at the end of generateLootTable to add/replace items with AP checks
@@ -36,10 +61,10 @@ public class VaultChestLootMixin {
             remap = false
     )
     private void onGenerateLootTable(
-            Version version,
+            Object version,
             Player player,
             List<ItemStack> loot,
-            RandomSource random,
+            Object random,
             CallbackInfo ci
     ) {
         // Only process on server side and for real players
@@ -47,79 +72,49 @@ public class VaultChestLootMixin {
             return;
         }
 
-        // Get the chest's position
-        VaultChestTileEntity chest = (VaultChestTileEntity)(Object)this;
-        BlockPos pos = chest.getBlockPos();
-
-        // Check with VaultHuntersManager if this chest should contain an AP check
+        // Get manager
         VaultHuntersManager manager = VaultHuntersAPMod.getManager();
         if (manager == null) {
             return;
         }
 
-        // Generate a location ID based on chest position
-        // This ensures the same chest always has the same check
-        long locationId = generateLocationIdFromPosition(pos);
-
-        // Check if this location has already been collected
-        if (manager.isLocationChecked(locationId)) {
-            LOGGER.debug("Chest at {} already checked, skipping", pos);
+        // FIRST: Roll the dice - does this chest have a check?
+        if (!shouldContainCheck()) {
+            // No check in this chest - just return normal loot
             return;
         }
 
-        // Check if this chest should contain an AP check
-        // You can customize this logic - for now, let's say 20% of chests
-        if (shouldContainCheck(pos, random)) {
-            LOGGER.info("Adding AP check to chest at {} for player {}",
-                    pos, serverPlayer.getName().getString());
+        // SECOND: This chest won the lottery! Get the next check number
+        long locationId = manager.getNextChestCheckId(serverPlayer);
 
-            // Create the AP check item
-            ItemStack checkItem = ModItems.getCheckItemStack(locationId);
-
-            // Strategy: Replace the first item with the check
-            // You can change this to clear all items, add as bonus, etc.
-            if (!loot.isEmpty()) {
-                loot.set(0, checkItem);
-            } else {
-                loot.add(checkItem);
-            }
+        if (locationId == 0) {
+            // No more chest checks available for this player
+            LOGGER.debug("No more chest checks available for player {}",
+                    serverPlayer.getName().getString());
+            return;
         }
-    }
 
-    /**
-     * Generate a consistent location ID from chest position
-     * Uses a hash of the position to ensure same chest = same ID
-     */
-    private long generateLocationIdFromPosition(BlockPos pos) {
-        // Base location ID for chests (you can adjust this range)
-        long BASE_CHEST_ID = 45000L; // After your other location types
+        int checkNumber = (int)(locationId - 45000);
+        LOGGER.info("Player {} found chest check #{} ({}% chance)",
+                serverPlayer.getName().getString(), checkNumber, (checkChance * 100));
 
-        // Create a hash from position
-        // This ensures the same position always generates the same ID
-        long hash = (long)pos.getX() * 73856093L
-                ^ (long)pos.getY() * 19349663L
-                ^ (long)pos.getZ() * 83492791L;
+        // Create the AP check item
+        ItemStack checkItem = ModItems.getCheckItemStack(locationId);
 
-        // Keep it positive and in a reasonable range
-        hash = Math.abs(hash) % 10000; // Max 10000 chest locations
-
-        return BASE_CHEST_ID + hash;
+        // Replace the first item with the check
+        if (!loot.isEmpty()) {
+            loot.set(0, checkItem);
+        } else {
+            loot.add(checkItem);
+        }
     }
 
     /**
      * Determine if this chest should contain an AP check
-     * You can customize this logic based on your needs
+     * This is the RNG roll!
      */
-    private boolean shouldContainCheck(BlockPos pos, RandomSource random) {
-        // Option 1: Random percentage (20% of chests)
-        // return random.nextFloat() < 0.2f;
-
-        // Option 2: Use position hash for deterministic checks
-        // Same chest will always be/not be a check
-        int hash = pos.hashCode();
-        return (hash & 0xFF) < 51; // ~20% of chests (51/256)
-
-        // Option 3: Every Nth chest
-        // return (Math.abs(pos.getX() + pos.getY() + pos.getZ()) % 5) == 0;
+    private boolean shouldContainCheck() {
+        return RANDOM.nextFloat() < checkChance;
     }
+
 }

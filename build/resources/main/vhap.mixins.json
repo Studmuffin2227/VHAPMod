@@ -10,7 +10,8 @@
     "AbilityLevelMessageMixin",
     "TalentLevelMessageMixin",
     "ExpertiseLevelMessageMixin",
-    "ModResearchPreventionMixin"
+    "ModResearchPreventionMixin",
+    "VaultChestLootMixin"
   ],
   "injectors": {
     "defaultRequire": 1

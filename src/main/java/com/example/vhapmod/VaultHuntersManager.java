@@ -7,6 +7,9 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.TextComponent;
 import java.lang.reflect.Method;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -42,6 +45,12 @@ public class VaultHuntersManager {
     private static Class<?> playerTalentsDataClass;
     private static Class<?> playerExpertisesDataClass;
     private static Class<?> playerResearchesDataClass;
+
+    private final Map<UUID, Integer> playerChestCheckCount = new HashMap<>();
+    private int totalChestChecks = 100;
+    private static final long CHEST_CHECK_BASE_ID = 50000L;
+    private float woodenChestWeight = 0.05f;     // Default 5%
+    private float normalChestWeight = 0.10f;     // Default 10%
 
     static {
         try {
@@ -155,6 +164,82 @@ public class VaultHuntersManager {
             sendLocationCheck(locationId, player, displayName);
         }
     }
+
+
+    // ==================== Chest Check Implementation ===================
+    // Add setters
+    public void setTotalChestChecks(int count) {
+        this.totalChestChecks = count;
+        LOGGER.info("Configured total chest checks: {}", count);
+    }
+
+    public void setWoodenChestWeight(float weight) {
+        this.woodenChestWeight = weight;
+        LOGGER.info("Configured wooden chest weight: {}%", (int)(weight * 100));
+    }
+
+    public void setNormalChestWeight(float weight) {
+        this.normalChestWeight = weight;
+        LOGGER.info("Configured normal chest weight: {}%", (int)(weight * 100));
+    }
+
+    // Add getters
+    public int getTotalChestChecks() {
+        return totalChestChecks;
+    }
+
+    public float getWoodenChestWeight() {
+        return woodenChestWeight;
+    }
+
+    public float getNormalChestWeight() {
+        return normalChestWeight;
+    }
+
+    public long getNextChestCheckId(ServerPlayer player) {
+        UUID playerId = player.getUUID();
+        int collectedCount = playerChestCheckCount.getOrDefault(playerId, 0);
+
+        // Use the configurable value
+        if (collectedCount >= totalChestChecks) {
+            return 0;
+        }
+
+        long nextCheckId = CHEST_CHECK_BASE_ID + collectedCount + 1;
+        playerChestCheckCount.put(playerId, collectedCount + 1);
+
+        return nextCheckId;
+    }
+
+    /**
+     * Get how many chest checks a player has collected
+     */
+    public int getPlayerChestCheckCount(ServerPlayer player) {
+        return playerChestCheckCount.getOrDefault(player.getUUID(), 0);
+    }
+
+    /**
+     * Reset a player's chest check counter (if needed)
+     */
+    public void resetPlayerChestChecks(ServerPlayer player) {
+        playerChestCheckCount.put(player.getUUID(), 0);
+        LOGGER.info("Reset chest check counter for {}", player.getName().getString());
+    }
+
+    /**
+     * Called when player logs out - clean up if needed
+     */
+    public void onPlayerLogout(ServerPlayer player) {
+        // DON'T clear the counter - we want it to persist!
+        // The counter represents actual progression
+
+        // But you might want to save it to disk here
+        // saveChestCheckProgress(player);
+    }
+
+    // Optional: Save/load chest check progress to NBT or file
+    // So it persists across server restarts
+
 
     // ==================== ARCHIPELAGO COMMUNICATION ====================
 

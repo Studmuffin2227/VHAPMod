@@ -30,7 +30,6 @@ public class VaultHuntersAPMod {
         ModItems.ITEMS.register(modEventBus);
         LOGGER.info("Items registered!");
 
-        // Register loot modifiers
 
 
         ModNetwork.init();

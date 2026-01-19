@@ -2,9 +2,9 @@ Manifest-Version: 1.0
 Specification-Title: vhapmod
 Specification-Vendor: vhapmod
 Specification-Version: 1
-Implementation-Title: VHAPMod
+Implementation-Title: VHAP
 Implementation-Version: 1.0.0
 Implementation-Vendor: vhapmod
-Implementation-Timestamp: 2026-01-02T16:12:01-0700
+Implementation-Timestamp: 2026-01-19T11:38:16-0700
 MixinConfigs: vhap.mixins.json
 
