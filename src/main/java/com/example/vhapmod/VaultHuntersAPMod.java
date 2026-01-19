@@ -1,7 +1,6 @@
 package com.example.vhapmod;
 
 import com.example.vhapmod.item.ModItems;
-import com.example.vhapmod.loot.ModLootModifiers;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
@@ -12,9 +11,6 @@ import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import com.example.vhapmod.loot.APAwareLootModifier;
-import net.minecraftforge.event.RegisterCommandsEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
 
 @Mod("apvaulthuntersmod")
 public class VaultHuntersAPMod {
@@ -35,9 +31,7 @@ public class VaultHuntersAPMod {
         LOGGER.info("Items registered!");
 
         // Register loot modifiers
-        LOGGER.info("Registering loot modifiers...");
-        ModLootModifiers.LOOT_MODIFIERS.register(modEventBus);
-        LOGGER.info("Loot modifiers registered!");
+
 
         ModNetwork.init();
 
@@ -57,9 +51,7 @@ public class VaultHuntersAPMod {
         VHProgressionTracker.setManager(vhManager);
         vhManager.setAPClient(apClient);
 
-        APAwareLootModifier.setChestCheckCount(100);
-        APAwareLootModifier.setWoodenChestWeight(1.0f);
-        APAwareLootModifier.setNormalChestWeight(1.0f);
+
 
         LOGGER.info("VH AP Bridge setup complete");
     }

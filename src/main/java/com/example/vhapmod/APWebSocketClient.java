@@ -1,12 +1,13 @@
 package com.example.vhapmod;
 
-import com.example.vhapmod.loot.APAwareLootModifier;
 import com.google.gson.*;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.TextComponent;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
+import net.minecraft.world.item.Item;
+import net.minecraftforge.registries.ForgeRegistries;
+import net.minecraftforge.registries.IForgeRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -240,19 +241,19 @@ public class APWebSocketClient implements WebSocket.Listener {
 
             if (slotData.has("vault_chest_checks")) {
                 int chestChecks = slotData.get("vault_chest_checks").getAsInt();
-                APAwareLootModifier.setChestCheckCount(chestChecks);
+                //APAwareLootModifier.setChestCheckCount(chestChecks);
                 LOGGER.info("✓ Chest checks: {}", chestChecks);
             }
 
             if (slotData.has("wooden_chest_weight")) {
                 float weight = slotData.get("wooden_chest_weight").getAsFloat();
-                APAwareLootModifier.setWoodenChestWeight(weight);
+                //APAwareLootModifier.setWoodenChestWeight(weight);
                 LOGGER.info("✓ Wooden chest weight: {}%", (int)(weight * 100));
             }
 
             if (slotData.has("normal_chest_weight")) {
                 float weight = slotData.get("normal_chest_weight").getAsFloat();
-                APAwareLootModifier.setNormalChestWeight(weight);
+                //APAwareLootModifier.setNormalChestWeight(weight);
                 LOGGER.info("✓ Normal chest weight: {}%", (int)(weight * 100));
             }
 
@@ -288,7 +289,7 @@ public class APWebSocketClient implements WebSocket.Listener {
             processedItems.add(uniqueKey);
 
             // Mark location as found
-            APAwareLootModifier.markCheckFound(locationId);
+            //APAwareLootModifier.markCheckFound(locationId);
 
             // Process item
             processReceivedItem(itemId, locationId);
@@ -381,7 +382,7 @@ public class APWebSocketClient implements WebSocket.Listener {
         }
 
         checkedLocations.add(locationId);
-        APAwareLootModifier.markCheckFound(locationId);
+        //APAwareLootModifier.markCheckFound(locationId);
 
         JsonObject packet = new JsonObject();
         packet.addProperty("cmd", "LocationChecks");
@@ -692,29 +693,28 @@ public class APWebSocketClient implements WebSocket.Listener {
             int playerLevel = VHDataReader.getPlayerLevel(player);
 
             // Get the item based on type
-            net.minecraft.world.item.Item item;
+
+            Item item;
             switch (gearType) {
-                case "helmet":
-                    item = net.minecraft.core.Registry.ITEM.get(new net.minecraft.resources.ResourceLocation("the_vault", "helmet"));
-                    break;
-                case "chestplate":
-                    item = net.minecraft.core.Registry.ITEM.get(new net.minecraft.resources.ResourceLocation("the_vault", "chestplate"));
-                    break;
-                case "leggings":
-                    item = net.minecraft.core.Registry.ITEM.get(new net.minecraft.resources.ResourceLocation("the_vault", "leggings"));
-                    break;
-                case "boots":
-                    item = net.minecraft.core.Registry.ITEM.get(new net.minecraft.resources.ResourceLocation("the_vault", "boots"));
-                    break;
-                default:
+                case "helmet" -> {
+                    item = ForgeRegistries.ITEMS.getValue(new ResourceLocation("the_vault:helmet"));
+                }
+                case "chestplate" -> {
+                     item = ForgeRegistries.ITEMS.getValue(new ResourceLocation("the_vault:chestplate"));
+                }
+                case "leggings" -> {
+                     item = ForgeRegistries.ITEMS.getValue(new ResourceLocation("the_vault:leggings"));
+                }
+                case "boots" -> {
+                     item = ForgeRegistries.ITEMS.getValue(new ResourceLocation("the_vault:boots"));
+                }
+                default -> {
                     LOGGER.warn("Unknown gear type: {}", gearType);
-                    return;
+                    //default to boots or smth idk
+                    item = ForgeRegistries.ITEMS.getValue(new ResourceLocation("the_vault:boots"));
+                }
             }
 
-            if (item == null) {
-                LOGGER.error("Could not find vault gear item: {}", gearType);
-                return;
-            }
 
             // Create ItemStack
             net.minecraft.world.item.ItemStack stack = new net.minecraft.world.item.ItemStack(item);

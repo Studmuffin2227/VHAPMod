@@ -31,6 +31,7 @@ public class VaultHuntersManager {
     private final Set<Long> checkedExpertises = new HashSet<>();
     private final Set<Long> checkedMods = new HashSet<>();
     private final Set<Long> checkedMilestones = new HashSet<>();
+    private final Set<Long> checkedLocations = new HashSet<>();
 
     // Current XP and Loot gamerule states
     private String currentXPRule = "NORMAL";
@@ -169,6 +170,30 @@ public class VaultHuntersManager {
         } else {
             LOGGER.warn("AP client not connected - cannot send location check");
         }
+    }
+
+    public boolean isLocationChecked(long locationId) {
+        return checkedLocations.contains(locationId);
+    }
+
+    /**
+     * Mark a location as checked
+     */
+    public void markLocationChecked(long locationId) {
+        checkedLocations.add(locationId);
+        LOGGER.info("Marked location {} as checked", locationId);
+    }
+
+    /**
+     * Handle when a chest check is collected
+     * Called when server receives confirmation from AP
+     */
+    public void onChestCheckCollected(ServerPlayer player, long locationId) {
+        LOGGER.info("Player {} collected chest check at location {}",
+                player.getName().getString(), locationId);
+
+        // Mark as checked so it won't spawn again
+        markLocationChecked(locationId);
     }
 
     /**
