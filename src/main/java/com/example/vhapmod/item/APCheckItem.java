@@ -7,11 +7,13 @@ import net.minecraft.network.chat.TextComponent;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.item.Rarity;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.level.Level;
@@ -33,61 +35,85 @@ public class APCheckItem extends Item {
     }
 
     @Override
-    public void inventoryTick(ItemStack stack, Level level, Entity entity, int slot, boolean selected) {
-        if (!level.isClientSide && entity instanceof ServerPlayer player) {
-            // Check if already processed via NBT tag
-            if (stack.hasTag() && stack.getTag().getBoolean("APProcessed")) {
-                return;
-            }
-
-            // Mark as processed
-            stack.getOrCreateTag().putBoolean("APProcessed", true);
-
-            // Send check and consume
-            sendCheckAndConsume(player, stack);
-        }
+    public Component getName(ItemStack stack) {
+        return new TextComponent("AP Chest Item");
     }
 
     @Override
-    public void onDestroyed(ItemEntity itemEntity) {
-        Level level = itemEntity.level;
+    public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
+        ItemStack stack = player.getItemInHand(hand);
 
-        if (!level.isClientSide) {
-            Player player = level.getNearestPlayer(
-                    itemEntity.getX(),
-                    itemEntity.getY(),
-                    itemEntity.getZ(),
-                    5.0,
-                    false
-            );
-
-            if (player instanceof ServerPlayer serverPlayer) {
-                ItemStack stack = itemEntity.getItem();
-                sendCheck(serverPlayer, stack);
-            }
+        if (level.isClientSide) {
+            return InteractionResultHolder.sidedSuccess(stack, true);
         }
 
-        super.onDestroyed(itemEntity);
+        if (player instanceof ServerPlayer serverPlayer && claimCheck(serverPlayer, hand)) {
+            return InteractionResultHolder.sidedSuccess(player.getItemInHand(hand), false);
+        }
+
+        return InteractionResultHolder.pass(stack);
     }
 
-    private void sendCheckAndConsume(ServerPlayer player, ItemStack stack) {
-        sendCheck(player, stack);
-        stack.shrink(1); // Delete item
+    @Override
+    public InteractionResult useOn(UseOnContext context) {
+        Level level = context.getLevel();
+        Player player = context.getPlayer();
+        if (player == null) {
+            return InteractionResult.PASS;
+        }
+
+        if (level.isClientSide) {
+            return InteractionResult.SUCCESS;
+        }
+
+        if (player instanceof ServerPlayer serverPlayer && claimCheck(serverPlayer, context.getHand())) {
+            return InteractionResult.SUCCESS;
+        }
+
+        return InteractionResult.PASS;
     }
 
-    private void sendCheck(ServerPlayer player, ItemStack stack) {
+    private boolean claimCheck(ServerPlayer player, InteractionHand hand) {
+        ItemStack stack = player.getItemInHand(hand);
+        if (stack.isEmpty()) {
+            return false;
+        }
+
+        if (!sendCheck(player, stack)) {
+            return false;
+        }
+
+        stack.shrink(1);
+        if (stack.isEmpty()) {
+            player.setItemInHand(hand, ItemStack.EMPTY);
+        }
+        player.getInventory().setChanged();
+        return true;
+    }
+
+    private boolean sendCheck(ServerPlayer player, ItemStack stack) {
         // Read location ID from NBT
         long locationId = getLocationId(stack);
         if (locationId == 0) {
             player.sendMessage(
-                    new TextComponent("⚠ Invalid AP check (no location ID)")
+                    new TextComponent("Invalid AP check (no location ID)")
                             .withStyle(ChatFormatting.RED),
                     player.getUUID()
             );
-            return;
+            return false;
+        }
+
+        if (locationId < 44000L || locationId >= 44500L) {
+            player.sendMessage(
+                    new TextComponent("Invalid AP chest check ID: " + locationId)
+                            .withStyle(ChatFormatting.RED),
+                    player.getUUID()
+            );
+            return false;
         }
 
         var client = VaultHuntersAPMod.getAPClient();
+        int checkNumber = (int)(locationId - 44000 + 1);
 
         if (client != null && client.isConnected()) {
             client.sendLocationCheck(locationId);
@@ -103,19 +129,19 @@ public class APCheckItem extends Item {
                     1.5F
             );
 
-            int checkNumber = (int)(locationId - 44000 + 1);
             player.sendMessage(
-                    new TextComponent("✓ Archipelago Check #" + checkNumber)
+                    new TextComponent("Sent AP Chest Check #" + checkNumber + " (ID " + locationId + ")")
                             .withStyle(ChatFormatting.GOLD),
                     player.getUUID()
             );
+            return true;
         } else {
-            int checkNumber = (int)(locationId - 44000 + 1);
             player.sendMessage(
-                    new TextComponent("✓ Check #" + checkNumber + " (not connected)")
+                    new TextComponent("Check #" + checkNumber + " (not connected)")
                             .withStyle(ChatFormatting.YELLOW),
                     player.getUUID()
             );
+            return true;
         }
     }
 
@@ -147,7 +173,7 @@ public class APCheckItem extends Item {
         tooltip.add(new TextComponent("Check #" + checkNumber)
                 .withStyle(ChatFormatting.YELLOW));
         tooltip.add(new TextComponent(""));
-        tooltip.add(new TextComponent("Consumed on pickup")
+        tooltip.add(new TextComponent("Right-click to claim")
                 .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
     }
 

@@ -56,7 +56,7 @@ mixin {
 dependencies {
     minecraft 'net.minecraftforge:forge:1.18.2-40.3.11'
 
-    implementation fg.deobf(files('libs/the_vault-1.18.2-3.20.3.6055.jar'))
+    implementation fg.deobf(files('libs/the_vault-1.18.2-3.21.4.1.6551.jar'))
     compileOnly 'org.spongepowered:mixin:0.8.5'
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 }

@@ -1,5 +1,6 @@
 package com.example.vhapmod;
 
+import com.example.vhapmod.event.VaultChestEventListener;
 import com.example.vhapmod.item.ModItems;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
@@ -30,7 +31,13 @@ public class VaultHuntersAPMod {
         ModItems.ITEMS.register(modEventBus);
         LOGGER.info("Items registered!");
 
+        //Register the Chest Generation Event Listener
+        iskallia.vault.core.event.CommonEvents.CHEST_LOOT_GENERATION.register(
+                this,
+                (data) -> VaultChestEventListener.onChestGeneration(data)
+        );
 
+        LOGGER.info("Registered Vault Chest event listener for AP checks");
 
         ModNetwork.init();
 
@@ -62,6 +69,21 @@ public class VaultHuntersAPMod {
         LOGGER.info("Server started - AP client ready");
         LOGGER.info("Use /apconnect <host> <port> <slotName> to connect to AP");
         LOGGER.info("Example: /apconnect localhost 25569 Muffin");
+
+        APConnectionConfig config = APConnectionConfig.load();
+        if (config.autoConnect && config.hasConnectionInfo() && !apClient.isConnected()) {
+            LOGGER.info("Auto-connecting to AP server {}:{} as {}",
+                    config.host, config.port, config.slotName);
+            apClient.connect(config.host, config.port, config.slotName, config.password)
+                    .whenComplete((unused, throwable) -> {
+                        if (throwable != null) {
+                            String reason = throwable.getMessage() != null
+                                    ? throwable.getMessage()
+                                    : throwable.getClass().getSimpleName();
+                            LOGGER.warn("Auto-connect failed: {}", reason);
+                        }
+                    });
+        }
     }
 
     @SubscribeEvent

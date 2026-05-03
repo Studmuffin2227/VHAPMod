@@ -39,9 +39,7 @@ public class AbilityLevelMessageMixin {
             LOGGER.info("Ability: {}", abilityName);
             LOGGER.info("Player: {}", player.getName().getString());
 
-            String normalizedName = "vhskill:" + abilityName.toLowerCase().replace(" ", "_");
-
-            if (!APSkillLockManager.isSkillUnlockedSilent(player, normalizedName)) {
+            if (!APSkillLockManager.isSkillUnlockedSilent(player, abilityName)) {
                 LOGGER.warn("BLOCKING ability upgrade!");
 
                 MutableComponent msg = new TextComponent("[AP] ")

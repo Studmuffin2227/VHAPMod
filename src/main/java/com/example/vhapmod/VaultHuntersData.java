@@ -9,8 +9,8 @@ import java.util.Map;
  * Location ID Ranges:
  * - 43000-43025: Skills (26 total)
  * - 43100-43200: Talents (~100 slots)
- * - 43200-43250: Expertises (~50 slots)
- * - 43300-43400: Mods (~100 slots)
+ * - 43200-43256: Mods (57 slots)
+ * - 43300-43315: Expertises (16 slots)
  * - 43400-43408: Milestone checks (levels, first vault, etc.)
  */
 public class VaultHuntersData {
@@ -20,13 +20,12 @@ public class VaultHuntersData {
     // Base IDs for each category
     public static final long SKILL_BASE_ID = 43000L;
     public static final long TALENT_BASE_ID = 43100L;
-    public static final long EXPERTISE_BASE_ID = 43200L;
-    public static final long MOD_BASE_ID = 43300L;
+    public static final long MOD_BASE_ID = 43200L;
+    public static final long EXPERTISE_BASE_ID = 43300L;
     public static final long MILESTONE_BASE_ID = 43400L;
 
     // Skills (26 total) - IDs 43000-43025
     private static final HashMap<String, Long> SKILL_LOCATIONS = new HashMap<>() {{
-        // Combat Skills
         put("vhskill:nova", SKILL_BASE_ID + 0);
         put("vhskill:fireball", SKILL_BASE_ID + 1);
         put("vhskill:javelin", SKILL_BASE_ID + 2);
@@ -37,28 +36,23 @@ public class VaultHuntersData {
         put("vhskill:arcane", SKILL_BASE_ID + 7);
         put("vhskill:earthquake", SKILL_BASE_ID + 8);
         put("vhskill:lightning_strike", SKILL_BASE_ID + 9);
-        put("vhskill:chaos_cube", SKILL_BASE_ID + 10);
-
-        // Utility Skills
+        put("vhskill:dash", SKILL_BASE_ID + 10);
         put("vhskill:vein_miner", SKILL_BASE_ID + 11);
         put("vhskill:ghost_walk", SKILL_BASE_ID + 12);
-        put("vhskill:heal", SKILL_BASE_ID + 13);
-        put("vhskill:dash", SKILL_BASE_ID + 14);
-        put("vhskill:hunter", SKILL_BASE_ID + 15);
-        put("vhskill:mega_jump", SKILL_BASE_ID + 16);
-        put("vhskill:mana_shield", SKILL_BASE_ID + 17);
-        put("vhskill:taunt", SKILL_BASE_ID + 18);
-
-        // Powerup Skills
-        put("vhskill:battle_cry", SKILL_BASE_ID + 19);
-        put("vhskill:smite", SKILL_BASE_ID + 20);
-        put("vhskill:empower", SKILL_BASE_ID + 21);
-        put("vhskill:rejuvenation_totem", SKILL_BASE_ID + 22);
-        put("vhskill:shell", SKILL_BASE_ID + 23);
-        put("vhskill:rampage", SKILL_BASE_ID + 24);
-
-        //Ultimate Skills
-        put("vhskill:storm_arrow", SKILL_BASE_ID + 25);
+        put("vhskill:rampage", SKILL_BASE_ID + 13);
+        put("vhskill:mega_jump", SKILL_BASE_ID + 14);
+        put("vhskill:shell", SKILL_BASE_ID + 15);
+        put("vhskill:taunt", SKILL_BASE_ID + 16);
+        put("vhskill:heal", SKILL_BASE_ID + 17);
+        put("vhskill:angel", SKILL_BASE_ID + 18);
+        put("vhskill:empower", SKILL_BASE_ID + 19);
+        put("vhskill:hunter", SKILL_BASE_ID + 20);
+        put("vhskill:smite", SKILL_BASE_ID + 21);
+        put("vhskill:storm_arrow", SKILL_BASE_ID + 22);
+        put("vhskill:battle_cry", SKILL_BASE_ID + 23);
+        put("vhskill:rejuvenation_totem", SKILL_BASE_ID + 24);
+        put("vhskill:mana_shield", SKILL_BASE_ID + 25);
+        put("vhskill:chaos_cube", SKILL_BASE_ID + 26);
     }};
 
     // ========== TALENT LOCATIONS HASHMAP (43100-43141) ==========
@@ -91,7 +85,7 @@ public class VaultHuntersData {
         put("vhtalent:lightning_finesse", TALENT_BASE_ID + 22); // 43122
         put("vhtalent:lightning_mastery", TALENT_BASE_ID + 23); // 43123
         put("vhtalent:prime_amplification", TALENT_BASE_ID + 24); // 43124
-        put("vhtalent:hunter's_instinct", TALENT_BASE_ID + 25);   // 43125
+        put("vhtalent:hunters_instinct", TALENT_BASE_ID + 25);   // 43125
         put("vhtalent:purist", TALENT_BASE_ID + 26);            // 43126
         put("vhtalent:farmer_twerker", TALENT_BASE_ID + 27);    // 43127
         put("vhtalent:bountiful_harvest", TALENT_BASE_ID + 28); // 43128
@@ -193,15 +187,15 @@ public class VaultHuntersData {
         put("vhexpertise:jeweler", EXPERTISE_BASE_ID + 12);             // 43312
         put("vhexpertise:artisan", EXPERTISE_BASE_ID + 13);             // 43313
         put("vhexpertise:bartering", EXPERTISE_BASE_ID + 14);           // 43314
-        put("vhexpertise:companion's_loyalty", EXPERTISE_BASE_ID + 15); // 43315
+        put("vhexpertise:companions_loyalty", EXPERTISE_BASE_ID + 15); // 43315
     }};
 
     // Milestone Checks - IDs 43400-43408
     private static final HashMap<String, Long> MILESTONE_LOCATIONS = new HashMap<>() {{
         put("vhmilestone:level_10", MILESTONE_BASE_ID + 0);
-        put("vhmilestone:level_25", MILESTONE_BASE_ID + 1);
-        put("vhmilestone:level_50", MILESTONE_BASE_ID + 2);
-        put("vhmilestone:level_75", MILESTONE_BASE_ID + 3);
+        put("vhmilestone:level_20", MILESTONE_BASE_ID + 1);
+        put("vhmilestone:level_40", MILESTONE_BASE_ID + 2);
+        put("vhmilestone:level_50", MILESTONE_BASE_ID + 3);
         put("vhmilestone:level_100", MILESTONE_BASE_ID + 4);
         put("vhmilestone:first_vault", MILESTONE_BASE_ID + 5);
         put("vhmilestone:complete_10_vaults", MILESTONE_BASE_ID + 6);
@@ -232,7 +226,7 @@ public class VaultHuntersData {
     // ==================== DYNAMIC REGISTRATION ====================
 
     private static long nextTalentId = TALENT_BASE_ID + 45; // Start after defined talents
-    private static long nextExpertiseId = EXPERTISE_BASE_ID;
+    private static long nextExpertiseId = EXPERTISE_BASE_ID + 16;
     private static long nextModId = MOD_BASE_ID + 57; // Start after defined mods
 
     /**
@@ -318,6 +312,9 @@ public class VaultHuntersData {
      * Get location ID for a skill
      */
     public static Long getSkillLocationId(String skillName) {
+        if ("vhskill:chain_lightning".equals(skillName)) {
+            skillName = "vhskill:lightning_strike";
+        }
         return SKILL_LOCATIONS.getOrDefault(skillName, 0L);
     }
 
@@ -392,7 +389,7 @@ public class VaultHuntersData {
                 "vhtalent:lightning_finesse",  // 43122
                 "vhtalent:lightning_mastery",  // 43123
                 "vhtalent:prime_amplification",// 43124
-                "vhtalent:hunter's_instinct",  // 43125
+                "vhtalent:hunters_instinct",  // 43125
                 "vhtalent:purist",             // 43126
                 "vhtalent:farmer_twerker",     // 43127
                 "vhtalent:bountiful_harvest",  // 43128
@@ -516,7 +513,7 @@ public class VaultHuntersData {
                 "vhexpertise:jeweler",               // 43312
                 "vhexpertise:artisan",               // 43313
                 "vhexpertise:bartering",             // 43314
-                "vhexpertise:companion's_loyalty"    // 43315
+                "vhexpertise:companions_loyalty"    // 43315
         };
 
         int index = (int)(itemId - 43300);
@@ -603,7 +600,7 @@ public class VaultHuntersData {
                 + MILESTONE_LOCATIONS.size();
     }
     public static final Map<String, Long> QUEST_LOCATIONS = new HashMap<String, Long>() {{
-        for (int i = 0; i < 99; i++) {
+        for (int i = 0; i < 76; i++) {
             put("Quest Completion " + (i + 1), 43500L + i);
         }
     }};

@@ -3,7 +3,6 @@
   "minVersion": "0.8",
   "package": "com.example.vhapmod.mixin",
   "compatibilityLevel": "JAVA_17",
-  "refmap": "vhapmod.refmap.json",
   "mixins": [
     "QuestCompletionMixin",
     "TrinketDiscoveryMixin",
@@ -11,7 +10,12 @@
     "TalentLevelMessageMixin",
     "ExpertiseLevelMessageMixin",
     "ModResearchPreventionMixin",
-    "VaultChestLootMixin"
+    "VaultGearLevelMixin"
+  ],
+  "client": [
+    "AbilityTooltipMixin",
+    "SkillTooltipMixin",
+    "ModTooltipMixin"
   ],
   "injectors": {
     "defaultRequire": 1

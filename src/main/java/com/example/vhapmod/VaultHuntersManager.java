@@ -3,9 +3,6 @@ package com.example.vhapmod;
 import net.minecraft.server.level.ServerPlayer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import net.minecraft.ChatFormatting;
-import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.network.chat.TextComponent;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
@@ -46,12 +43,12 @@ public class VaultHuntersManager {
     private static Class<?> playerExpertisesDataClass;
     private static Class<?> playerResearchesDataClass;
 
-    private final Map<UUID, Integer> playerChestCheckCount = new HashMap<>();
     private int totalChestChecks = 100;
-    private static final long CHEST_CHECK_BASE_ID = 50000L;
+    private int totalQuestChecks = 76;
+    private static final long CHEST_CHECK_BASE_ID = 44000L;
     private float woodenChestWeight = 0.05f;     // Default 5%
     private float normalChestWeight = 0.10f;     // Default 10%
-
+    private int goalLevel = 50;
     static {
         try {
             playerAbilitiesDataClass = Class.forName("iskallia.vault.world.data.PlayerAbilitiesData");
@@ -140,22 +137,6 @@ public class VaultHuntersManager {
         }
     }
 
-    /**
-     * Called when a player completes a vault
-     */
-    public void onVaultCompleted(ServerPlayer player, int totalCompleted) {
-        // Check for vault completion milestones
-        if (totalCompleted == 1) {
-            checkMilestone(player, "vhmilestone:first_vault", "First Vault");
-        } else if (totalCompleted == 10) {
-            checkMilestone(player, "vhmilestone:complete_10_vaults", "10 Vaults");
-        } else if (totalCompleted == 25) {
-            checkMilestone(player, "vhmilestone:complete_25_vaults", "25 Vaults");
-        } else if (totalCompleted == 50) {
-            checkMilestone(player, "vhmilestone:complete_50_vaults", "50 Vaults");
-        }
-    }
-
     private void checkMilestone(ServerPlayer player, String milestoneName, String displayName) {
         Long locationId = VaultHuntersData.getMilestoneLocationId(milestoneName);
 
@@ -173,6 +154,15 @@ public class VaultHuntersManager {
         LOGGER.info("Configured total chest checks: {}", count);
     }
 
+    public void setGoalLevel(int level) {
+        this.goalLevel = level;
+    }
+
+    public void setTotalQuestChecks(int count) {
+        this.totalQuestChecks = Math.max(0, count);
+        LOGGER.info("Configured total quest checks: {}", this.totalQuestChecks);
+    }
+
     public void setWoodenChestWeight(float weight) {
         this.woodenChestWeight = weight;
         LOGGER.info("Configured wooden chest weight: {}%", (int)(weight * 100));
@@ -188,6 +178,10 @@ public class VaultHuntersManager {
         return totalChestChecks;
     }
 
+    public int getTotalQuestChecks() {
+        return totalQuestChecks;
+    }
+
     public float getWoodenChestWeight() {
         return woodenChestWeight;
     }
@@ -198,7 +192,8 @@ public class VaultHuntersManager {
 
     public long getNextChestCheckId(ServerPlayer player) {
         UUID playerId = player.getUUID();
-        int collectedCount = playerChestCheckCount.getOrDefault(playerId, 0);
+        APProgressData progressData = APProgressData.get(player.getServer());
+        long collectedCount = progressData.getChestCheckCount(playerId);
 
         // Use the configurable value
         if (collectedCount >= totalChestChecks) {
@@ -206,7 +201,7 @@ public class VaultHuntersManager {
         }
 
         long nextCheckId = CHEST_CHECK_BASE_ID + collectedCount + 1;
-        playerChestCheckCount.put(playerId, collectedCount + 1);
+        progressData.setChestCheckCount(playerId, collectedCount + 1);
 
         return nextCheckId;
     }
@@ -215,14 +210,14 @@ public class VaultHuntersManager {
      * Get how many chest checks a player has collected
      */
     public int getPlayerChestCheckCount(ServerPlayer player) {
-        return playerChestCheckCount.getOrDefault(player.getUUID(), 0);
+        return (int) APProgressData.get(player.getServer()).getChestCheckCount(player.getUUID());
     }
 
     /**
      * Reset a player's chest check counter (if needed)
      */
     public void resetPlayerChestChecks(ServerPlayer player) {
-        playerChestCheckCount.put(player.getUUID(), 0);
+        APProgressData.get(player.getServer()).setChestCheckCount(player.getUUID(), 0L);
         LOGGER.info("Reset chest check counter for {}", player.getName().getString());
     }
 
@@ -310,8 +305,7 @@ public class VaultHuntersManager {
         LOGGER.info("Giving skill point to {}", player.getName().getString());
         try {
             // Get PlayerAbilitiesData
-            Method getData = playerAbilitiesDataClass.getMethod("get", player.getLevel().getClass());
-            Object data = getData.invoke(null, player.getLevel());
+            Object data = VHDataReader.getWorldData(playerAbilitiesDataClass, player.getLevel());
 
             // Get the player's ability tree
             Method getAbilities = data.getClass().getMethod("getAbilities", player.getUUID().getClass());
@@ -338,8 +332,7 @@ public class VaultHuntersManager {
         LOGGER.info("Giving expertise point to {}", player.getName().getString());
         try {
             // Get PlayerExpertisesData
-            Method getData = playerExpertisesDataClass.getMethod("get", player.getLevel().getClass());
-            Object data = getData.invoke(null, player.getLevel());
+            Object data = VHDataReader.getWorldData(playerExpertisesDataClass, player.getLevel());
 
             // Get the player's expertise tree
             Method getExpertises = data.getClass().getMethod("getExpertises", player.getUUID().getClass());
@@ -366,8 +359,7 @@ public class VaultHuntersManager {
         LOGGER.info("Giving knowledge star to {}", player.getName().getString());
         try {
             // Get PlayerResearchesData
-            Method getData = playerResearchesDataClass.getMethod("get", player.getLevel().getClass());
-            Object data = getData.invoke(null, player.getLevel());
+            Object data = VHDataReader.getWorldData(playerResearchesDataClass, player.getLevel());
 
             // Get the player's research tree
             Method getResearches = data.getClass().getMethod("getResearches", player.getUUID().getClass());
@@ -464,13 +456,6 @@ public class VaultHuntersManager {
         // APSkillLockManager already has the storage
         APSkillLockManager.unlockSkill(player, skillName);
         APSkillLockManager.syncToClient(player);
-
-        player.sendMessage(
-                new TextComponent("[AP] ")
-                        .withStyle(ChatFormatting.GREEN)
-                        .append(new TextComponent("Unlocked skill: " + skillName)),
-                player.getUUID()
-        );
         LOGGER.info("Unlocked skill {} for player {}", skillName, player.getName().getString());
     }
 
@@ -480,39 +465,63 @@ public class VaultHuntersManager {
         LOGGER.info("Talent: {}", talentName);
         APSkillLockManager.unlockTalent(player, talentName);
         APSkillLockManager.syncToClient(player);
-
-        player.sendMessage(
-                new TextComponent("[AP] ")
-                        .withStyle(ChatFormatting.GREEN)
-                        .append(new TextComponent("Unlocked talent: " + talentName)),
-                player.getUUID()
-        );
         LOGGER.info("Unlocked talent {} for player {}", talentName, player.getName().getString());
     }
 
     public void unlockMod(ServerPlayer player, String modName) {
         APSkillLockManager.unlockMod(player, modName);
         APSkillLockManager.syncToClient(player);
-
-        player.sendMessage(
-                new TextComponent("[AP] ")
-                        .withStyle(ChatFormatting.GREEN)
-                        .append(new TextComponent("Unlocked mod: " + modName)),
-                player.getUUID()
-        );
         LOGGER.info("Unlocked mod {} for player {}", modName, player.getName().getString());
     }
 
     public void unlockExpertise(ServerPlayer player, String expertiseName) {
         APSkillLockManager.unlockExpertise(player, expertiseName);
         APSkillLockManager.syncToClient(player);
-
-        player.sendMessage(
-                new TextComponent("[AP] ")
-                        .withStyle(ChatFormatting.GREEN)
-                        .append(new TextComponent("Unlocked expertise: " + expertiseName)),
-                player.getUUID()
-        );
         LOGGER.info("Unlocked expertise {} for player {}", expertiseName, player.getName().getString());
+    }
+
+    private static final ThreadLocal<Integer> CURRENT_PLAYER_LEVEL = ThreadLocal.withInitial(() -> 0);
+
+    public boolean isConnected() {
+        return apClient != null && apClient.isConnected();
+    }
+
+    //Get how many chest checks this player has found (for generating location IDs)
+    public long getChestCheckCount(ServerPlayer player) {
+        // This should track per-player how many chests they've opened
+        // For now, just count checked locations
+        long count = 0;
+        for (long id = CHEST_CHECK_BASE_ID; id < CHEST_CHECK_BASE_ID + 500L; id++) {
+            if (isLocationChecked(id)) {
+                count++;
+            } else {
+                break;
+            }
+        }
+        return count;
+    }
+    public long getNextChestCheckIdForItem(ServerPlayer player) {
+        UUID playerId = player.getUUID();
+        APProgressData progressData = APProgressData.get(player.getServer());
+
+        // Get the current count for this player
+        long currentCount = progressData.getChestCheckCount(playerId);
+
+        if (currentCount >= totalChestChecks) {
+            LOGGER.info("Player {} has reached max chest checks ({})",
+                    player.getName().getString(), totalChestChecks);
+            return 0L;
+        }
+
+        // Calculate location ID (50000 + count)
+        long locationId = CHEST_CHECK_BASE_ID + currentCount;
+
+        // Increment the counter for next time
+        progressData.setChestCheckCount(playerId, currentCount + 1);
+
+        LOGGER.info("Generated chest check item for player {}: location ID {} (check #{})",
+                player.getName().getString(), locationId, currentCount + 1);
+
+        return locationId;
     }
 }

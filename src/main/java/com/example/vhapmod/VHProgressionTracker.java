@@ -23,8 +23,6 @@ public class VHProgressionTracker {
     private static int tickCounter = 0;
     private static VaultHuntersManager manager;
     private static MinecraftServer server;
-    private static int completedQuestCount = 0;
-
     // Cache of what each player had last time we checked
     private static final Map<UUID, PlayerProgressionCache> playerCache = new HashMap<>();
 
@@ -101,7 +99,7 @@ public class VHProgressionTracker {
         for (String ability : currentAbilities) {
             if (!cache.abilities.contains(ability)) {
                 LOGGER.info("NEW ABILITY UNLOCKED: " + player.getName().getString() + " learned " + ability);
-                String normalizedName = "vhskill:" + ability.toLowerCase().replace(" ", "_");
+                String normalizedName = APSkillLockManager.canonicalSkillKey(ability);
                 manager.onSkillUnlocked(player, normalizedName);
                 anyNewUnlock = true;
             }
@@ -111,7 +109,7 @@ public class VHProgressionTracker {
         for (String talent : currentTalents) {
             if (!cache.talents.contains(talent)) {
                 LOGGER.info("NEW TALENT UNLOCKED: " + player.getName().getString() + " learned " + talent);
-                String normalizedName = "vhtalent:" + talent.toLowerCase().replace(" ", "_");
+                String normalizedName = APSkillLockManager.canonicalTalentKey(talent);
                 manager.onTalentUnlocked(player, normalizedName);
                 anyNewUnlock = true;
             }
@@ -121,7 +119,7 @@ public class VHProgressionTracker {
         for (String mod : currentMods) {
             if (!cache.mods.contains(mod)) {
                 LOGGER.info("NEW MOD RESEARCHED: " + player.getName().getString() + " researched " + mod);
-                String normalizedName = "vhmod:" + mod.toLowerCase().replace(" ", "_");
+                String normalizedName = APSkillLockManager.canonicalModKey(mod);
                 manager.onModUnlocked(player, normalizedName);
             }
         }
@@ -131,7 +129,7 @@ public class VHProgressionTracker {
             LOGGER.info("LEVEL UP: " + player.getName().getString() + " is now level " + currentLevel);
 
             // Check ALL milestones between old and new level
-            int[] milestones = {10, 25, 50, 75, 100};
+            int[] milestones = {10, 20, 40, 50, 100};
             for (int milestone : milestones) {
                 if (cache.level < milestone && currentLevel >= milestone) {
                     LOGGER.info("MILESTONE REACHED: Level " + milestone);
@@ -172,15 +170,23 @@ public class VHProgressionTracker {
      * Track quest completions (progressive, not tied to specific quests)
      */
     public static void onQuestCompleted(ServerPlayer player) {
-        completedQuestCount++;
+        if (manager == null) {
+            LOGGER.warn("Manager is null, cannot send quest check!");
+            return;
+        }
+
+        APProgressData progressData = APProgressData.get(player.getServer());
+        if (progressData.getCompletedQuestCount() >= manager.getTotalQuestChecks()) {
+            LOGGER.info("Ignoring quest completion for {}; configured quest checks are exhausted ({})",
+                    player.getName().getString(), manager.getTotalQuestChecks());
+            return;
+        }
+
+        int completedQuestCount = progressData.incrementQuestCount();
         String locationName = "Quest Completion " + completedQuestCount;
 
-        if (manager != null) {
-            manager.onQuestCompleted(player, locationName);
-            LOGGER.info("Player {} completed quest #{}", player.getName().getString(), completedQuestCount);
-        } else {
-            LOGGER.warn("Manager is null, cannot send quest check!");
-        }
+        manager.onQuestCompleted(player, locationName);
+        LOGGER.info("Player {} completed quest #{}", player.getName().getString(), completedQuestCount);
     }
 
     /**

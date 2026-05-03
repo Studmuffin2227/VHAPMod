@@ -38,7 +38,7 @@ public class VHSkillEnforcer {
         try {
             enforceAbilityLocks(player);
             enforceTalentLocks(player);
-            //enforceModLocks(player);
+            enforceModLocks(player);
             //enforceExpertiseLocks(player);
         } catch (Exception e) {
             LOGGER.error("Error enforcing locks: " + e.getMessage());
@@ -47,8 +47,7 @@ public class VHSkillEnforcer {
 
     private static void enforceAbilityLocks(ServerPlayer player) {
         try {
-            Method getData = playerAbilitiesDataClass.getMethod("get", player.getLevel().getClass());
-            Object data = getData.invoke(null, player.getLevel());
+            Object data = VHDataReader.getWorldData(playerAbilitiesDataClass, player.getLevel());
 
             Method getAbilities = data.getClass().getMethod("getAbilities", UUID.class);
             Object abilityTree = getAbilities.invoke(data, player.getUUID());
@@ -64,8 +63,7 @@ public class VHSkillEnforcer {
 
     private static void enforceTalentLocks(ServerPlayer player) {
         try {
-            Method getData = playerTalentsDataClass.getMethod("get", player.getLevel().getClass());
-            Object data = getData.invoke(null, player.getLevel());
+            Object data = VHDataReader.getWorldData(playerTalentsDataClass, player.getLevel());
 
             Method getTalents = data.getClass().getMethod("getTalents", UUID.class);
             Object talentTree = getTalents.invoke(data, player.getUUID());
@@ -124,8 +122,7 @@ public class VHSkillEnforcer {
     private static void enforceModLocks(ServerPlayer player) {
         try {
             Class<?> researchDataClass = Class.forName("iskallia.vault.world.data.PlayerResearchesData");
-            Method getData = researchDataClass.getMethod("get", player.getLevel().getClass());
-            Object data = getData.invoke(null, player.getLevel());
+            Object data = VHDataReader.getWorldData(researchDataClass, player.getLevel());
 
             Method getResearches = data.getClass().getMethod("getResearches", UUID.class);
             Object researchTree = getResearches.invoke(data, player.getUUID());
@@ -142,8 +139,7 @@ public class VHSkillEnforcer {
     private static void enforceExpertiseLocks(ServerPlayer player) {
         try {
             Class<?> expertiseDataClass = Class.forName("iskallia.vault.world.data.PlayerExpertisesData");
-            Method getData = expertiseDataClass.getMethod("get", player.getLevel().getClass());
-            Object data = getData.invoke(null, player.getLevel());
+            Object data = VHDataReader.getWorldData(expertiseDataClass, player.getLevel());
 
             Method getExpertises = data.getClass().getMethod("getExpertises", UUID.class);
             Object expertiseTree = getExpertises.invoke(data, player.getUUID());
@@ -171,19 +167,19 @@ public class VHSkillEnforcer {
                         String name = (String) getName.invoke(skill);
 
                         if (name != null && !name.isEmpty()) {
-                            String normalized = (isAbility ? "vhskill:" : "vhtalent:") + name.toLowerCase().replace(" ", "_");
-
-                            LOGGER.info("Checking {}: raw='{}' normalized='{}' UUID={}", isAbility ? "skill" : "talent", name, normalized, player.getUUID());
+                            String normalized = isAbility
+                                    ? APSkillLockManager.canonicalSkillKey(name)
+                                    : APSkillLockManager.canonicalTalentKey(name);
 
                             // Pass RAW name - APSkillLockManager will normalize it
                             boolean allowed = isAbility
                                     ? APSkillLockManager.isSkillUnlockedSilent(player, name)
                                     : APSkillLockManager.isTalentUnlockedSilent(player, name);
 
-                            LOGGER.info("Result: allowed={} for UUID={}", allowed, player.getUUID());
-
                             if (!allowed) {
-                                LOGGER.info("Unlocked talents in storage: {}", APSkillLockManager.getUnlockedTalents(player));
+                                LOGGER.debug("Unauthorized {} detected: raw='{}' normalized='{}' UUID={}",
+                                        isAbility ? "skill" : "talent", name, normalized, player.getUUID());
+                                LOGGER.debug("Unlocked talents in storage: {}", APSkillLockManager.getUnlockedTalents(player));
                             }
 
                             if (!allowed) {
@@ -201,7 +197,9 @@ public class VHSkillEnforcer {
             for (Object skill : toRemove) {
                 Method getName = skill.getClass().getMethod("getName");
                 String name = (String) getName.invoke(skill);
-                String normalized = (isAbility ? "vhskill:" : "vhtalent:") + name.toLowerCase().replace(" ", "_");
+                String normalized = isAbility
+                        ? APSkillLockManager.canonicalSkillKey(name)
+                        : APSkillLockManager.canonicalTalentKey(name);
 
                 if (!warned.contains(normalized)) {
                     LOGGER.warn("Removing unauthorized {} '{}' from {}",
@@ -255,42 +253,47 @@ public class VHSkillEnforcer {
 
     private static void checkAndRemoveUnauthorizedMods(Object researchTree, ServerPlayer player, Object dataObject) {
         try {
-            List<Object> toRemove = new ArrayList<>();
-            Method iterate = researchTree.getClass().getMethod("iterate", Class.class, java.util.function.Consumer.class);
+            Class<?> modConfigsClass = Class.forName("iskallia.vault.init.ModConfigs");
+            Object researchConfig = modConfigsClass.getField("RESEARCHES").get(null);
+            Method getByName = researchConfig.getClass().getMethod("getByName", String.class);
+            Method getResearchesDone = researchTree.getClass().getMethod("getResearchesDone");
+            Method removeResearch = dataObject.getClass().getMethod(
+                    "removeResearch",
+                    ServerPlayer.class,
+                    Class.forName("iskallia.vault.research.type.Research")
+            );
 
-            Class<?> researchClass = Class.forName("iskallia.vault.research.ResearchTree");
-            iterate.invoke(researchTree, researchClass, (java.util.function.Consumer<Object>) research -> {
-                try {
-                    Method isResearched = research.getClass().getMethod("isResearched");
-                    if ((boolean) isResearched.invoke(research)) {
-                        Method getName = research.getClass().getMethod("getName");
-                        String name = (String) getName.invoke(research);
-
-                        if (name != null && !name.isEmpty()) {
-                            String normalized = "vhmod:" + name.toLowerCase().replace(" ", "_");
-
-                            if (!APSkillLockManager.isModUnlockedSilent(player, normalized)) {
-                                toRemove.add(research);
-                            }
-                        }
+            List<String> toRemove = new ArrayList<>();
+            Object researchesDone = getResearchesDone.invoke(researchTree);
+            if (researchesDone instanceof Iterable<?> iterable) {
+                for (Object entry : iterable) {
+                    if (!(entry instanceof String name) || name.isEmpty()) {
+                        continue;
                     }
-                } catch (Exception e) {}
-            });
+
+                    if (!APSkillLockManager.isModUnlockedSilent(player, name)) {
+                        toRemove.add(name);
+                    }
+                }
+            }
 
             UUID playerId = player.getUUID();
             Set<String> warned = warnedSkills.computeIfAbsent(playerId, k -> new HashSet<>());
 
-            for (Object research : toRemove) {
-                Method getName = research.getClass().getMethod("getName");
-                String name = (String) getName.invoke(research);
+            for (String name : toRemove) {
                 String normalized = "vhmod:" + name.toLowerCase().replace(" ", "_");
 
                 if (!warned.contains(normalized)) {
                     LOGGER.warn("Removing unauthorized mod '{}' from {}", name, player.getName().getString());
 
-                    // Reset the research
-                    Method unresearch = research.getClass().getMethod("reset");
-                    unresearch.invoke(research);
+                    Object research = getByName.invoke(researchConfig, name);
+                    if (research == null) {
+                        LOGGER.warn("Could not resolve research object for '{}'", name);
+                        warned.add(normalized);
+                        continue;
+                    }
+
+                    removeResearch.invoke(dataObject, player, research);
 
                     player.sendMessage(
                             new TextComponent("[AP] ").withStyle(ChatFormatting.RED)
@@ -602,15 +605,14 @@ public class VHSkillEnforcer {
     private static void refundSkillPoints(ServerPlayer player, int points) {
         try {
             Class<?> playerVaultStatsClass = Class.forName("iskallia.vault.world.data.PlayerVaultStatsData");
-            Method getData = playerVaultStatsClass.getMethod("get", player.getLevel().getClass());
-            Object statsData = getData.invoke(null, player.getLevel());
+            Object statsData = VHDataReader.getWorldData(playerVaultStatsClass, player.getLevel());
 
             Method addSkillPoints = statsData.getClass().getMethod("addSkillPoints", ServerPlayer.class, int.class);
             addSkillPoints.invoke(statsData, player, points);
 
             LOGGER.info("Refunded {} skill points to {}", points, player.getName().getString());
             player.sendMessage(
-                    new TextComponent("§e[AP] Refunded " + points + " skill point" + (points != 1 ? "s" : "")),
+                    new TextComponent("[AP] Refunded " + points + " skill point" + (points != 1 ? "s" : "")).withStyle(ChatFormatting.YELLOW),
                     player.getUUID()
             );
         } catch (Exception e) {

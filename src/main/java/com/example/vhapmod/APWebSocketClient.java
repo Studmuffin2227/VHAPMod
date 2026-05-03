@@ -16,7 +16,9 @@ import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Clean WebSocket client for Archipelago
@@ -58,6 +60,7 @@ public class APWebSocketClient implements WebSocket.Listener {
     public CompletableFuture<Void> connect(String host, int port, String slotName, String password) {
         this.slotName = slotName;
         this.password = password;
+        this.connected = false;
 
         String uri = String.format("ws://%s:%d", host, port);
         LOGGER.info("Connecting to AP server: {}", uri);
@@ -71,9 +74,14 @@ public class APWebSocketClient implements WebSocket.Listener {
                     LOGGER.info("WebSocket connected, sending Connect packet");
                     sendConnect();
                 })
+                .orTimeout(10, TimeUnit.SECONDS)
                 .exceptionally(ex -> {
-                    LOGGER.error("Failed to connect: {}", ex.getMessage());
-                    return null;
+                    Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+                    String reason = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
+                    LOGGER.error("Failed to connect: {}", reason);
+                    this.connected = false;
+                    broadcastStatusToPlayers("[AP] Connection failed: " + reason, ChatFormatting.RED);
+                    throw new CompletionException(cause);
                 });
     }
 
@@ -121,6 +129,9 @@ public class APWebSocketClient implements WebSocket.Listener {
     @Override
     public void onOpen(WebSocket webSocket) {
         LOGGER.info("WebSocket opened");
+        // Required for java.net.http.WebSocket flow control:
+        // request the first inbound message immediately, otherwise no packets are delivered.
+        webSocket.request(1);
         WebSocket.Listener.super.onOpen(webSocket);
     }
 
@@ -233,28 +244,40 @@ public class APWebSocketClient implements WebSocket.Listener {
             team = packet.get("team").getAsInt();
         }
 
-        LOGGER.info("✓ Connected to AP as slot {} on team {}", slot, team);
+        LOGGER.info("Connected to AP as slot {} on team {}", slot, team);
 
         // Read YAML settings from slot_data
         if (packet.has("slot_data")) {
             JsonObject slotData = packet.getAsJsonObject("slot_data");
 
+            if (slotData.has("goal_level")) {
+                goalLevel = slotData.get("goal_level").getAsInt();
+                LOGGER.info("Goal level: {}", goalLevel);
+                vhManager.setGoalLevel(goalLevel);
+            }
+
+            int questChecks = slotData.has("quest_check_count")
+                    ? slotData.get("quest_check_count").getAsInt()
+                    : getQuestChecksForGoalLevel(goalLevel);
+            vhManager.setTotalQuestChecks(questChecks);
+            LOGGER.info("Quest checks: {}", questChecks);
+
             if (slotData.has("vault_chest_checks")) {
                 int chestChecks = slotData.get("vault_chest_checks").getAsInt();
                 vhManager.setTotalChestChecks(chestChecks);
-                LOGGER.info("✓ Chest checks: {}", chestChecks);
+                LOGGER.info("Chest checks: {}", chestChecks);
             }
 
             if (slotData.has("wooden_chest_weight")) {
                 float weight = slotData.get("wooden_chest_weight").getAsFloat();
                 vhManager.setWoodenChestWeight(weight);
-                LOGGER.info("✓ Wooden chest weight: {}%", (int)(weight * 100));
+                LOGGER.info("Wooden chest weight: {}%", (int)(weight * 100));
             }
 
             if (slotData.has("normal_chest_weight")) {
                 float weight = slotData.get("normal_chest_weight").getAsFloat();
                 vhManager.setNormalChestWeight(weight);
-                LOGGER.info("✓ Normal chest weight: {}%", (int)(weight * 100));
+                LOGGER.info("Normal chest weight: {}%", (int)(weight * 100));
             }
         }
 
@@ -264,8 +287,23 @@ public class APWebSocketClient implements WebSocket.Listener {
         }
     }
 
+    private int getQuestChecksForGoalLevel(int level) {
+        if (level <= 10) return 25;
+        if (level <= 20) return 37;
+        if (level <= 40) return 56;
+        if (level <= 50) return 58;
+        return 76;
+    }
+
     private void handleReceivedItems(JsonObject packet) {
         if (!packet.has("items")) return;
+        if (server == null) {
+            LOGGER.warn("Server is null, cannot process items");
+            return;
+        }
+
+        // Get persistent storage
+        ReceivedItemsData receivedData = ReceivedItemsData.get(server);
 
         JsonArray items = packet.getAsJsonArray("items");
         LOGGER.info("=== Receiving {} items ===", items.size());
@@ -278,13 +316,13 @@ public class APWebSocketClient implements WebSocket.Listener {
 
             // Prevent duplicate processing
             String uniqueKey = itemId + ":" + locationId;
-            if (processedItems.contains(uniqueKey)) {
+            if (receivedData.hasProcessed(uniqueKey)) {
+                LOGGER.debug("Already processed: {}", uniqueKey);
                 continue;
             }
-            processedItems.add(uniqueKey);
 
-            // Mark location as found
-            //APAwareLootModifier.markCheckFound(locationId);
+            // Mark as processed and save
+            receivedData.markProcessed(uniqueKey);
 
             // Process item
             processReceivedItem(itemId, locationId);
@@ -303,25 +341,17 @@ public class APWebSocketClient implements WebSocket.Listener {
 
                 LOGGER.info("Processing item {} from location {}", itemId, locationId);
 
-                // Skills (43000-43026)
-                if (itemId >= 43000 && itemId < 43100) {
-                    String skillName = getSkillName(itemId);
-                    vhManager.unlockSkill(player, skillName);
-                }
-                // Talents (43100-43199)
-                else if (itemId >= 43100 && itemId < 43200) {
-                    String talentName = getTalentName(itemId);
-                    vhManager.unlockTalent(player, talentName);
-                }
-                // Mods (43200-43299)
-                else if (itemId >= 43200 && itemId < 43300) {
-                    String modName = getModName(itemId);
-                    vhManager.unlockMod(player, modName);
-                }
-                // Expertises (43300-43399)
-                else if (itemId >= 43300 && itemId < 43400) {
-                    String expertiseName = getExpertiseName(itemId);
-                    vhManager.unlockExpertise(player, expertiseName);
+                String unlockName = VaultHuntersData.getLocationNameById(itemId);
+                if (unlockName != null) {
+                    if (unlockName.startsWith("vhskill:")) {
+                        vhManager.unlockSkill(player, unlockName);
+                    } else if (unlockName.startsWith("vhtalent:")) {
+                        vhManager.unlockTalent(player, unlockName);
+                    } else if (unlockName.startsWith("vhmod:")) {
+                        vhManager.unlockMod(player, unlockName);
+                    } else if (unlockName.startsWith("vhexpertise:")) {
+                        vhManager.unlockExpertise(player, unlockName);
+                    }
                 }
                 // Filler items (33700-33799)
                 else if (itemId >= 33700 && itemId < 33800) {
@@ -366,6 +396,7 @@ public class APWebSocketClient implements WebSocket.Listener {
 
         LOGGER.error("Connection refused: {}", reason);
         connected = false;
+        broadcastStatusToPlayers("[AP] Connection refused: " + reason, ChatFormatting.RED);
     }
 
     // ========== SENDING PACKETS ==========
@@ -376,7 +407,10 @@ public class APWebSocketClient implements WebSocket.Listener {
             return;
         }
 
-        checkedLocations.add(locationId);
+        if (!checkedLocations.add(locationId)) {
+            LOGGER.warn("Skipping duplicate location check send for {}", locationId);
+            return;
+        }
         //APAwareLootModifier.markCheckFound(locationId);
 
         JsonObject packet = new JsonObject();
@@ -391,7 +425,7 @@ public class APWebSocketClient implements WebSocket.Listener {
 
         LOGGER.info("Sending LocationChecks packet: {}", gson.toJson(wrapper));
         webSocket.sendText(gson.toJson(wrapper), true);
-        LOGGER.info("✓ Sent location check: {}", locationId);
+        LOGGER.info("Sent location check: {}", locationId);
     }
 
     public void checkGoalReached(ServerPlayer player) {
@@ -417,12 +451,12 @@ public class APWebSocketClient implements WebSocket.Listener {
 
         // Celebrate!
         player.sendMessage(
-                new TextComponent("★★★ ARCHIPELAGO GOAL COMPLETE! ★★★")
+                new TextComponent("*** ARCHIPELAGO GOAL COMPLETE! ***")
                         .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD),
                 player.getUUID()
         );
 
-        LOGGER.info("✓ Sent goal completion!");
+        LOGGER.info("Sent goal completion");
     }
 
     // ========== ITEM MAPPING ==========
@@ -430,17 +464,17 @@ public class APWebSocketClient implements WebSocket.Listener {
     private String getSkillName(long itemId) {
         // Map item IDs to skill names (43000-43026)
         String[] skills = {
-                "vhskill:nova", "vhskill:fireball", "vhskill:javelin", "vhskill:stonefall",
-                "vhskill:ice_bolt", "vhskill:implode", "vhskill:shield_bash", "vhskill:arcane",
-                "vhskill:earthquake", "vhskill:lightning_strike", "vhskill:dash", "vhskill:vein_miner",
-                "vhskill:ghost_walk", "vhskill:rampage", "vhskill:mega_jump", "vhskill:shell",
-                "vhskill:taunt", "vhskill:heal", "vhskill:angel", "vhskill:empower",
-                "vhskill:hunter", "vhskill:smite", "vhskill:storm_arrow", "vhskill:battle_cry",
-                "vhskill:rejuvenation_totem", "vhskill:mana_shield", "vhskill:chaos_cube"
+                "nova", "fireball", "javelin", "stonefall",
+                "ice_bolt", "implode", "shield_bash", "arcane",
+                "earthquake", "lightning_strike", "dash", "vein_miner",
+                "ghost_walk", "rampage", "mega_jump", "shell",
+                "taunt", "heal", "angel", "empower",
+                "hunter", "smite", "storm_arrow", "battle_cry",
+                "rejuvenation_totem", "mana_shield", "chaos_cube"
         };
 
         int index = (int)(itemId - 43000);
-        return index >= 0 && index < skills.length ? skills[index] : "vhskill:unknown";
+        return index >= 0 && index < skills.length ? skills[index] : "unknown";
     }
 
     private String getTalentName(long itemId) {
@@ -451,7 +485,7 @@ public class APWebSocketClient implements WebSocket.Listener {
                 "methodical", "depleted", "prudent", "stoneskin",
                 "blight", "toxic_reaction", "arcana", "blazing",
                 "lucky_momentum", "frenzy", "lightning_finesse",
-                "lightning_mastery", "prime_amplification", "hunter's_instinct",
+                "lightning_mastery", "prime_amplification", "hunters_instinct",
                 "purist", "farmer_twerker", "bountiful_harvest",
                 "treasure_seeker", "horde_mastery", "champion_mastery",
                 "assassin_mastery", "dungeon_mastery", "fatal_strike",
@@ -497,7 +531,7 @@ public class APWebSocketClient implements WebSocket.Listener {
                 "trinketer", "divine", "unbreakable",
                 "marketer", "bounty_hunter", "angel",
                 "jeweler", "artisan", "bartering",
-                "companion's_loyalty"
+                "companions_loyalty"
         };
 
         int index = (int)(itemId - 43300);
@@ -520,13 +554,13 @@ public class APWebSocketClient implements WebSocket.Listener {
                 // 4: Emerald (50)
                 {"minecraft:emerald", "50"},
                 // 5: Ender Pearl (1)
-                {"minecraft:ender_pearl", "1"},
+                {"minecraft:ender_pearl", "2"},
                 // 6: Pouch (1)
                 {"sophisticatedbackpacks:backpack", "1"},
                 // 7: Pickup Upgrade (1)
-                {"sophisticatedbackpacks:pickup_upgrade", "1"},
+                {"sophisticatedbackpacks:backpack", "1"},
                 // 8: Void Upgrade (1)
-                {"sophisticatedbackpacks:void_upgrade", "1"},
+                {"sophisticatedbackpacks:backpack", "1"},
                 // 9: Bounty Pearl (10)
                 {"the_vault:bounty_pearl", "10"},
                 // 10: Large Chromatic Iron Stack (32)
@@ -577,16 +611,16 @@ public class APWebSocketClient implements WebSocket.Listener {
                 {"the_vault:boots", "1"},
                 // 33: Mod Box (1)
                 {"the_vault:mod_box", "1"},
-                // 34: MISSING - skipped
-                {"minecraft:barrier", "0"},
+                // 34: Diamond (20)
+                {"minecraft:diamond", "20"},
                 // 35: Seal of the Sage (1)
                 {"the_vault:crystal_seal_sage", "1"},
                 // 36: Phoenix Capstone (1)
                 {"the_vault:phoenix_feather", "1"},
                 // 37: Catalyst Fragment (1)
-                {"the_vault:vault_catalyst_fragment", "1"},
+                {"the_vault:vault_catalyst_fragment", "64"},
                 // 38: Inscription Piece (1)
-                {"the_vault:inscription_piece", "1"},
+                {"the_vault:inscription_piece", "32"},
                 // 39: Unidentified Artifact (1)
                 {"the_vault:unidentified_artifact", "1"},
                 // 40: Tiny Vault Gold (4)
@@ -594,26 +628,26 @@ public class APWebSocketClient implements WebSocket.Listener {
                 // 41: Vault Trinket (1)
                 {"the_vault:trinket", "1"},
                 // 42: Tiny Vault Diamond (4)
-                {"the_vault:vault_diamond", "4"},
+                {"the_vault:vault_diamond", "16"},
                 // 43: Large Vault Gold (20)
                 {"the_vault:vault_gold", "20"},
                 // 44: POG (1)
                 {"the_vault:gem_pog", "1"},
                 // 45: Netherite Ingot (1)
-                {"minecraft:netherite_ingot", "1"},
+                {"minecraft:netherite_ingot", "2"},
                 // 46: Wardrobe (1)
                 {"the_vault:wardrobe", "1"},
                 // 47: Huge Vault Bronze Stack (64)
                 {"the_vault:vault_bronze", "64"},
                 // 48: Echo Gem (1)
                 {"the_vault:gem_echo", "1"},
-                // 49: Small Mod Box (2)
+                // 49: Small Bundle Mod Box (2)
                 {"the_vault:mod_box", "2"},
                 // 50: Sour Orange (1)
                 {"the_vault:sour_orange", "1"},
                 // 51: Bamboo (1)
                 {"minecraft:bamboo", "1"},
-                // 52: Unidentified Noble Charm (1)
+                // 52: Unidentified Trinket (1)
                 {"the_vault:trinket", "1"},
                 // 53: Huge Vault Gold Stack (64)
                 {"the_vault:vault_gold", "64"},
@@ -703,6 +737,21 @@ public class APWebSocketClient implements WebSocket.Listener {
                 case "boots" -> {
                      item = ForgeRegistries.ITEMS.getValue(new ResourceLocation("the_vault:boots"));
                 }
+                case "sword" -> {
+                    item = ForgeRegistries.ITEMS.getValue(new ResourceLocation("the_vault:sword"));
+                }
+                case "axe" -> {
+                    item = ForgeRegistries.ITEMS.getValue(new ResourceLocation("the_vault:axe"));
+                }
+                case "wand" -> {
+                    item = ForgeRegistries.ITEMS.getValue(new ResourceLocation("the_vault:wand"));
+                }
+                case "shield" -> {
+                    item = ForgeRegistries.ITEMS.getValue(new ResourceLocation("the_vault:shield"));
+                }
+                case "focus" -> {
+                    item = ForgeRegistries.ITEMS.getValue(new ResourceLocation("the_vault:focus"));
+                }
                 default -> {
                     LOGGER.warn("Unknown gear type: {}", gearType);
                     //default to boots or smth idk
@@ -711,36 +760,48 @@ public class APWebSocketClient implements WebSocket.Listener {
             }
 
 
+            if (item == null) {
+                LOGGER.warn("Could not resolve vault gear item for type {}", gearType);
+                return;
+            }
+
             // Create ItemStack
             net.minecraft.world.item.ItemStack stack = new net.minecraft.world.item.ItemStack(item);
 
-            // Try to use VH's gear generation API
+            // Create unidentified vault gear at the target level.
             try {
-                // Look for VaultGear or similar class
-                Class<?> vaultGearClass = Class.forName("iskallia.vault.gear.VaultGearHelper");
+                Class<?> vaultGearStateClass = Class.forName("iskallia.vault.gear.VaultGearState");
+                Class<?> gearRollHelperClass = Class.forName("iskallia.vault.gear.GearRollHelper");
+                Class<?> vaultGearDataClass = Class.forName("iskallia.vault.gear.data.VaultGearData");
+                java.lang.reflect.Method read = vaultGearDataClass.getMethod(
+                        "read",
+                        net.minecraft.world.item.ItemStack.class
+                );
+                Object gearData = read.invoke(null, stack);
 
-                // Try to find a method like "createGear" or "generateGear"
-                java.lang.reflect.Method createGear = vaultGearClass.getMethod("createGear",
-                        net.minecraft.world.item.ItemStack.class, int.class);
+                java.lang.reflect.Method setItemLevel = vaultGearDataClass.getMethod("setItemLevel", int.class);
+                setItemLevel.invoke(gearData, playerLevel);
 
-                // Generate gear at player's level
-                createGear.invoke(null, stack, playerLevel);
+                Object unidentifiedState = Enum.valueOf((Class<Enum>) vaultGearStateClass, "UNIDENTIFIED");
+                java.lang.reflect.Method setState = vaultGearDataClass.getMethod("setState", vaultGearStateClass);
+                setState.invoke(gearData, unidentifiedState);
 
-                LOGGER.info("Created vault {} at level {} for {}", gearType, playerLevel, player.getName().getString());
+                java.lang.reflect.Method write = vaultGearDataClass.getMethod(
+                        "write",
+                        net.minecraft.world.item.ItemStack.class
+                );
+                write.invoke(gearData, stack);
 
-            } catch (ClassNotFoundException | NoSuchMethodException e) {
-                // VH API not found, try alternative approach
-                LOGGER.warn("VH gear API not found, using fallback method");
+                java.lang.reflect.Method tickGearRoll = gearRollHelperClass.getMethod(
+                        "tickGearRoll",
+                        net.minecraft.world.item.ItemStack.class,
+                        net.minecraft.world.entity.player.Player.class
+                );
+                tickGearRoll.invoke(null, stack, player);
 
-                // Fallback: Just set the level in NBT manually
-                net.minecraft.nbt.CompoundTag tag = stack.getOrCreateTag();
-                tag.putInt("vaultGearLevel", playerLevel);
-
-                // Add basic client cache so it displays correctly
-                net.minecraft.nbt.CompoundTag clientCache = new net.minecraft.nbt.CompoundTag();
-                clientCache.putInt("rarity", 0); // Common rarity
-                clientCache.putByte("hasModifierLEGENDARY", (byte)0);
-                tag.put("clientCache", clientCache);
+                LOGGER.info("Created unidentified vault {} at level {} for {}", gearType, playerLevel, player.getName().getString());
+            } catch (Exception e) {
+                LOGGER.warn("Failed to initialize unidentified VH gear, using command fallback: {}", e.getMessage());
             }
 
             // Give the item to the player
@@ -781,10 +842,15 @@ public class APWebSocketClient implements WebSocket.Listener {
     }
 
     private void sendConnectedMessageToPlayers() {
+        broadcastStatusToPlayers("[AP] Connected as " + slotName, ChatFormatting.GREEN);
+    }
+
+    private void broadcastStatusToPlayers(String message, ChatFormatting color) {
+        if (server == null) return;
+
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             player.sendMessage(
-                    new TextComponent("[AP] Connected as " + slotName)
-                            .withStyle(ChatFormatting.GREEN),
+                    new TextComponent(message).withStyle(color),
                     player.getUUID()
             );
         }

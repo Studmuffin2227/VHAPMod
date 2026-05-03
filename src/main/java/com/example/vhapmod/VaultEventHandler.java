@@ -8,6 +8,8 @@ import net.minecraftforge.fml.common.Mod;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import static com.example.vhapmod.APSkillLockManager.syncToClient;
+
 /**
  * Listens for Forge events and VH-specific events to track progression
  */
@@ -31,6 +33,9 @@ public class VaultEventHandler {
         if (event.getEntity() instanceof ServerPlayer player) {
             LOGGER.info("Player {} logged in - checking VH progression", player.getName().getString());
 
+            // Load player's unlocked skills/talents/expertises/mods from disk
+            APSkillLockManager.loadPlayer(player);
+
             // Connect to AP server
             /*
             APIntegration apIntegration = VaultHuntersAPMod.getAPIntegration();
@@ -43,6 +48,9 @@ public class VaultEventHandler {
 
             // Check player progression against AP
             checkPlayerProgression(player);
+
+            // Sync Client To Server
+            syncToClient(player);
         }
     }
 
@@ -103,9 +111,9 @@ public class VaultEventHandler {
             int level = VHDataReader.getPlayerLevel(player);
 
             if (level >= 10) manager.onLevelMilestone(player, 10);
-            if (level >= 25) manager.onLevelMilestone(player, 25);
+            if (level >= 20) manager.onLevelMilestone(player, 20);
+            if (level >= 40) manager.onLevelMilestone(player, 40);
             if (level >= 50) manager.onLevelMilestone(player, 50);
-            if (level >= 75) manager.onLevelMilestone(player, 75);
             if (level >= 100) manager.onLevelMilestone(player, 100);
 
         } catch (Exception e) {

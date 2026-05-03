@@ -2,65 +2,83 @@ package com.example.vhapmod.mixin;
 
 import com.example.vhapmod.APSkillLockManager;
 import iskallia.vault.research.type.Research;
-import iskallia.vault.research.ResearchTree;
-import iskallia.vault.world.data.PlayerResearchesData;
-import net.minecraft.ChatFormatting;
-import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.network.chat.TextComponent;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraftforge.server.ServerLifecycleHooks;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(targets = "iskallia.vault.world.data.PlayerResearchesData", remap = false)
-public class ModResearchPreventionMixin {
+import java.lang.reflect.Field;
+import java.util.List;
+import java.util.UUID;
 
-    private static final Logger LOGGER = LogManager.getLogger("ModResearchMixin");
+@Mixin(targets = "iskallia.vault.research.ResearchTree", remap = false)
+public abstract class ModResearchPreventionMixin {
+
+    private static final Logger LOGGER = LogManager.getLogger();
 
     @Inject(
-            method = "research(Lnet/minecraft/server/level/ServerPlayer;Liskallia/vault/research/type/Research;Z)Liskallia/vault/world/data/PlayerResearchesData;",
+            method = "research(Liskallia/vault/research/type/Research;)V",
             at = @At("HEAD"),
             cancellable = true,
             remap = false
     )
-    private void preventModResearch(ServerPlayer player, Research research, boolean sendMessage, CallbackInfoReturnable<PlayerResearchesData> cir) {
-        LOGGER.info("=== MOD RESEARCH MIXIN FIRED ===");
-        LOGGER.info("Player: {}", player.getName().getString());
-        LOGGER.info("Mod: {}", research.getName());
+    private void preventLockedModResearch(Research research, CallbackInfo ci) {
+        if (!Thread.currentThread().getName().contains("Server thread")) {
+            return;
+        }
 
-        String normalizedName = "vhmod:" + research.getName().toLowerCase().replace(" ", "_");
-        LOGGER.info("Normalized: {}", normalizedName);
+        try {
+            String modName = research.getName();
 
-        boolean isUnlocked = APSkillLockManager.isModUnlockedSilent(player, normalizedName);
-        LOGGER.info("Is unlocked in AP: {}", isUnlocked);
+            // Try to get the player UUID from this ResearchTree instance
+            UUID playerId = null;
+            try {
+                // Search for UUID field in class hierarchy.
+                Class<?> current = this.getClass();
+                while (current != null && current != Object.class && playerId == null) {
+                    for (Field field : current.getDeclaredFields()) {
+                        if (field.getType() == UUID.class) {
+                            field.setAccessible(true);
+                            playerId = (UUID) field.get(this);
+                            break;
+                        }
+                    }
+                    current = current.getSuperclass();
+                }
+            } catch (Exception ignored) {
+            }
 
-        if (!isUnlocked) {
-            LOGGER.warn("BLOCKING mod research!");
+            // Get the player from the server
+            MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+            if (server == null) {
+                return;
+            }
 
-            // Get the actual research cost to refund
-            PlayerResearchesData researchesData = PlayerResearchesData.get(player.getLevel());
-            ResearchTree researchTree = researchesData.getResearches(player);
-            int researchCost = researchTree.getResearchCost(research);
+            ServerPlayer player = playerId != null ? server.getPlayerList().getPlayer(playerId) : null;
 
-            LOGGER.info("Refunding {} knowledge points", researchCost);
+            // Fallback for single-player / single-user sessions where UUID is not attached to tree.
+            if (player == null) {
+                List<ServerPlayer> players = server.getPlayerList().getPlayers();
+                if (players.size() == 1) {
+                    player = players.get(0);
+                }
+            }
 
-            // Refund the actual knowledge point cost
-            net.minecraft.server.level.ServerLevel level = player.getLevel();
-            iskallia.vault.world.data.PlayerVaultStatsData statsData =
-                    iskallia.vault.world.data.PlayerVaultStatsData.get(level);
-            iskallia.vault.skill.PlayerVaultStats stats = statsData.getVaultStats(player);
-            stats.addKnowledgePoints(researchCost);
-            statsData.setDirty();
+            if (player != null) {
+                boolean unlocked = APSkillLockManager.isModUnlocked(player, modName);
 
-            MutableComponent message = new TextComponent("[AP] ")
-                    .withStyle(ChatFormatting.RED)
-                    .append(new TextComponent(research.getName() + " is locked! You need to receive it from Archipelago first."));
+                if (!unlocked) {
+                    ci.cancel();
+                }
+            }
 
-            player.sendMessage(message, player.getUUID());
-            cir.cancel();
+        } catch (Exception e) {
+            LOGGER.error("Error in mod research prevention", e);
         }
     }
 }

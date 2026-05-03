@@ -24,7 +24,8 @@ public class APConnectionConfig {
         }
 
         try (FileReader reader = new FileReader(file)) {
-            return GSON.fromJson(reader, APConnectionConfig.class);
+            APConnectionConfig cfg = GSON.fromJson(reader, APConnectionConfig.class);
+            return cfg != null ? cfg : new APConnectionConfig();
         } catch (Exception e) {
             return new APConnectionConfig();
         }

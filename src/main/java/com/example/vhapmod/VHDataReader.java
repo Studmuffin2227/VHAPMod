@@ -5,6 +5,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.*;
 
 /**
@@ -50,8 +51,7 @@ public class VHDataReader {
      */
     public static int getPlayerLevel(ServerPlayer player) {
         try {
-            Method getData = playerVaultStatsDataClass.getMethod("get", player.getLevel().getClass());
-            Object data = getData.invoke(null, player.getLevel());
+            Object data = getWorldData(playerVaultStatsDataClass, player.getLevel());
 
             Method getStats = data.getClass().getMethod("getVaultStats", player.getUUID().getClass());
             Object stats = getStats.invoke(data, player.getUUID());
@@ -70,8 +70,7 @@ public class VHDataReader {
     public static List<String> getUnlockedAbilities(ServerPlayer player) {
         Set<String> unlockedSet = new HashSet<>(); // Use Set to auto-deduplicate
         try {
-            Method getData = playerAbilitiesDataClass.getMethod("get", player.getLevel().getClass());
-            Object data = getData.invoke(null, player.getLevel());
+            Object data = getWorldData(playerAbilitiesDataClass, player.getLevel());
 
             Method getAbilities = data.getClass().getMethod("getAbilities", player.getUUID().getClass());
             Object abilityTree = getAbilities.invoke(data, player.getUUID());
@@ -123,8 +122,7 @@ public class VHDataReader {
     public static List<String> getUnlockedTalents(ServerPlayer player) {
         Set<String> unlockedSet = new HashSet<>();
         try {
-            Method getData = playerTalentsDataClass.getMethod("get", player.getLevel().getClass());
-            Object data = getData.invoke(null, player.getLevel());
+            Object data = getWorldData(playerTalentsDataClass, player.getLevel());
 
             Method getTalents = data.getClass().getMethod("getTalents", player.getUUID().getClass());
             Object talentTree = getTalents.invoke(data, player.getUUID());
@@ -148,7 +146,7 @@ public class VHDataReader {
 
                     if (name != null && !name.isEmpty() && unlocked_status) {
                         // ADD THIS DEBUG LINE:
-                        LOGGER.info("Found unlocked talent: '{}'", name);
+                        LOGGER.debug("Found unlocked talent: '{}'", name);
                         unlockedSet.add(name);
                     }
                 }
@@ -165,8 +163,7 @@ public class VHDataReader {
     public static List<String> getUnlockedExpertises(ServerPlayer player) {
         Set<String> unlockedSet = new HashSet<>();
         try {
-            Method getData = playerExpertisesDataClass.getMethod("get", player.getLevel().getClass());
-            Object data = getData.invoke(null, player.getLevel());
+            Object data = getWorldData(playerExpertisesDataClass, player.getLevel());
 
             Method getExpertises = data.getClass().getMethod("getExpertises", player.getUUID().getClass());
             Object expertiseTree = getExpertises.invoke(data, player.getUUID());
@@ -190,7 +187,7 @@ public class VHDataReader {
 
                     if (name != null && !name.isEmpty() && unlocked_status) {
                         // Debug logging to see exact names
-                        LOGGER.info("Found unlocked expertise: '{}'", name);
+                        LOGGER.debug("Found unlocked expertise: '{}'", name);
                         unlockedSet.add(name);
                     }
                 }
@@ -207,8 +204,7 @@ public class VHDataReader {
     public static List<String> getResearchedMods(ServerPlayer player) {
         List<String> researched = new ArrayList<>();
         try {
-            Method getData = playerResearchesDataClass.getMethod("get", player.getLevel().getClass());
-            Object data = getData.invoke(null, player.getLevel());
+            Object data = getWorldData(playerResearchesDataClass, player.getLevel());
 
             Method getResearches = data.getClass().getMethod("getResearches", player.getUUID().getClass());
             Object researchTree = getResearches.invoke(data, player.getUUID());
@@ -223,14 +219,14 @@ public class VHDataReader {
                         if (research instanceof String) {
                             String modName = (String) research;
                             // ADD THIS DEBUG LINE:
-                            LOGGER.info("Found researched mod (String): '{}'", modName);
+                            LOGGER.debug("Found researched mod (String): '{}'", modName);
                             researched.add(modName);
                         } else {
                             // It's a Research object, get the name
                             Method getName = research.getClass().getMethod("getName");
                             String name = (String) getName.invoke(research);
                             // ADD THIS DEBUG LINE:
-                            LOGGER.info("Found researched mod (Object): '{}'", name);
+                            LOGGER.debug("Found researched mod (Object): '{}'", name);
                             researched.add(name);
                         }
                     }
@@ -240,6 +236,37 @@ public class VHDataReader {
             LOGGER.error("Could not get researches: " + e.getMessage(), e);
         }
         return researched;
+    }
+
+    /**
+     * Resolve VH world-data singleton access across API signature changes.
+     */
+    public static Object getWorldData(Class<?> dataClass, Object world) throws Exception {
+        if (dataClass == null || world == null) {
+            throw new NoSuchMethodException("Data class or world is null");
+        }
+
+        Class<?> worldClass = world.getClass();
+
+        try {
+            Method exact = dataClass.getMethod("get", worldClass);
+            return exact.invoke(null, world);
+        } catch (NoSuchMethodException ignored) {
+            // Fall through to compatible signature search.
+        }
+
+        for (Method method : dataClass.getMethods()) {
+            if (!method.getName().equals("get")) continue;
+            if (!Modifier.isStatic(method.getModifiers())) continue;
+            if (method.getParameterCount() != 1) continue;
+
+            Class<?> param = method.getParameterTypes()[0];
+            if (param.isInstance(world) || param.isAssignableFrom(worldClass)) {
+                return method.invoke(null, world);
+            }
+        }
+
+        throw new NoSuchMethodException(dataClass.getName() + ".get(" + worldClass.getName() + ")");
     }
 
     /**
