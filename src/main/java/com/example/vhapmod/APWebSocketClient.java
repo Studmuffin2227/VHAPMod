@@ -62,7 +62,7 @@ public class APWebSocketClient implements WebSocket.Listener {
         this.password = password;
         this.connected = false;
 
-        String uri = String.format("ws://%s:%d", host, port);
+        String uri = String.format("wss://%s:%d", host, port);
         LOGGER.info("Connecting to AP server: {}", uri);
 
         HttpClient client = HttpClient.newHttpClient();

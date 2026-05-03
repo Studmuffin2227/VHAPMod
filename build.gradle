@@ -16,7 +16,7 @@ plugins {
 
 apply plugin: 'org.spongepowered.mixin'
 
-version = '1.0.0'
+version = '1.0.1'
 group = 'com.example.vhapmod'
 archivesBaseName = 'vhapmod'
 

@@ -68,7 +68,7 @@ public class VaultHuntersAPMod {
         apClient.setServer(event.getServer());
         LOGGER.info("Server started - AP client ready");
         LOGGER.info("Use /apconnect <host> <port> <slotName> to connect to AP");
-        LOGGER.info("Example: /apconnect localhost 25569 Muffin");
+        LOGGER.info("Example: /apconnect archipelago.gg 45624 Muffin");
 
         APConnectionConfig config = APConnectionConfig.load();
         if (config.autoConnect && config.hasConnectionInfo() && !apClient.isConnected()) {
