@@ -62,7 +62,7 @@ public class APWebSocketClient implements WebSocket.Listener {
         this.password = password;
         this.connected = false;
 
-        String uri = String.format("wss://%s:%d", host, port);
+        String uri = buildWebSocketUri(host, port);
         LOGGER.info("Connecting to AP server: {}", uri);
 
         HttpClient client = HttpClient.newHttpClient();
@@ -83,6 +83,28 @@ public class APWebSocketClient implements WebSocket.Listener {
                     broadcastStatusToPlayers("[AP] Connection failed: " + reason, ChatFormatting.RED);
                     throw new CompletionException(cause);
                 });
+    }
+
+    private String buildWebSocketUri(String host, int port) {
+        String trimmedHost = host == null ? "" : host.trim();
+
+        if (trimmedHost.startsWith("ws://") || trimmedHost.startsWith("wss://")) {
+            if (trimmedHost.matches("^wss?://.*:\\d+.*$")) {
+                return trimmedHost;
+            }
+            return trimmedHost + ":" + port;
+        }
+
+        String lowerHost = trimmedHost.toLowerCase(Locale.ROOT);
+        boolean localHost = lowerHost.equals("localhost")
+                || lowerHost.equals("127.0.0.1")
+                || lowerHost.equals("0.0.0.0")
+                || lowerHost.startsWith("192.168.")
+                || lowerHost.startsWith("10.")
+                || lowerHost.matches("^172\\.(1[6-9]|2\\d|3[0-1])\\..*");
+
+        String scheme = localHost ? "ws" : "wss";
+        return String.format("%s://%s:%d", scheme, trimmedHost, port);
     }
 
     private void sendConnect() {
@@ -279,6 +301,23 @@ public class APWebSocketClient implements WebSocket.Listener {
                 vhManager.setNormalChestWeight(weight);
                 LOGGER.info("Normal chest weight: {}%", (int)(weight * 100));
             }
+
+            if (slotData.has("lock_specializations")) {
+                boolean lockSpecializations = slotData.get("lock_specializations").getAsBoolean();
+                APSkillLockManager.setLockSpecializations(lockSpecializations);
+            }
+
+            if (slotData.has("max_xp_scaling")) {
+                vhManager.setMaxXpScaling(slotData.get("max_xp_scaling").getAsInt());
+            }
+
+            if (slotData.has("max_loot_scaling")) {
+                vhManager.setMaxLootScaling(slotData.get("max_loot_scaling").getAsInt());
+            }
+
+            if (server != null) {
+                vhManager.initializeWorldProgression(server);
+            }
         }
 
         // Send sync message to all players
@@ -340,6 +379,10 @@ public class APWebSocketClient implements WebSocket.Listener {
                 }
 
                 LOGGER.info("Processing item {} from location {}", itemId, locationId);
+
+                if (vhManager.applyProgressionItem(itemId, player)) {
+                    return;
+                }
 
                 String unlockName = VaultHuntersData.getLocationNameById(itemId);
                 if (unlockName != null) {
@@ -662,6 +705,10 @@ public class APWebSocketClient implements WebSocket.Listener {
                 // 58: Omega POG (1)
                 {"the_vault:omega_pog", "1"}
         };
+
+        if (itemId >= 33700L && itemId < 33800L) {
+            index = random.nextInt(fillers.length);
+        }
 
         if (index >= 0 && index < fillers.length) {
             String itemId_str = fillers[index][0];

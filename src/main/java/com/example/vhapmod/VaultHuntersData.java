@@ -53,7 +53,73 @@ public class VaultHuntersData {
         put("vhskill:rejuvenation_totem", SKILL_BASE_ID + 24);
         put("vhskill:mana_shield", SKILL_BASE_ID + 25);
         put("vhskill:chaos_cube", SKILL_BASE_ID + 26);
+        put("vhskill:heal_group", SKILL_BASE_ID + 27);
+        put("vhskill:heal_cleanse", SKILL_BASE_ID + 28);
+        put("vhskill:dash_damage", SKILL_BASE_ID + 29);
+        put("vhskill:dash_warp", SKILL_BASE_ID + 30);
+        put("vhskill:nova_slow", SKILL_BASE_ID + 31);
+        put("vhskill:nova_dot", SKILL_BASE_ID + 32);
+        put("vhskill:ghost_walk_spirit", SKILL_BASE_ID + 33);
+        put("vhskill:mega_jump_break_up", SKILL_BASE_ID + 34);
+        put("vhskill:mega_jump_break_down", SKILL_BASE_ID + 35);
+        put("vhskill:rampage_leech", SKILL_BASE_ID + 36);
+        put("vhskill:rampage_chain", SKILL_BASE_ID + 37);
+        put("vhskill:smite_archon", SKILL_BASE_ID + 38);
+        put("vhskill:smite_thunderstorm", SKILL_BASE_ID + 39);
+        put("vhskill:empower_ice_armor", SKILL_BASE_ID + 40);
+        put("vhskill:empower_slowness_aura", SKILL_BASE_ID + 41);
+        put("vhskill:vein_miner_fortune", SKILL_BASE_ID + 42);
+        put("vhskill:vein_miner_durability", SKILL_BASE_ID + 43);
+        put("vhskill:vein_miner_void", SKILL_BASE_ID + 44);
+        put("vhskill:javelin_sight", SKILL_BASE_ID + 45);
+        put("vhskill:mana_barrier", SKILL_BASE_ID + 46);
+        put("vhskill:mana_shield_retribution", SKILL_BASE_ID + 47);
+        put("vhskill:implode_life_tap", SKILL_BASE_ID + 48);
+        put("vhskill:taunt_repel", SKILL_BASE_ID + 49);
+        put("vhskill:taunt_charm", SKILL_BASE_ID + 50);
+        put("vhskill:stonefall_snow", SKILL_BASE_ID + 51);
+        put("vhskill:stonefall_cold", SKILL_BASE_ID + 52);
+        put("vhskill:totem_player_damage", SKILL_BASE_ID + 53);
+        put("vhskill:totem_mana_regen", SKILL_BASE_ID + 54);
+        put("vhskill:totem_mob_damage", SKILL_BASE_ID + 55);
+        put("vhskill:javelin_piercing", SKILL_BASE_ID + 56);
+        put("vhskill:javelin_scatter", SKILL_BASE_ID + 57);
+        put("vhskill:shell_porcupine", SKILL_BASE_ID + 58);
+        put("vhskill:shell_quill", SKILL_BASE_ID + 59);
+        put("vhskill:fireball_volley", SKILL_BASE_ID + 60);
+        put("vhskill:fireball_fireshot", SKILL_BASE_ID + 61);
+        put("vhskill:storm_arrow_blizzard", SKILL_BASE_ID + 62);
+        put("vhskill:battle_cry_spectral_strike", SKILL_BASE_ID + 63);
+        put("vhskill:battle_cry_lucky_strike", SKILL_BASE_ID + 64);
+        put("vhskill:ice_bolt_blast", SKILL_BASE_ID + 65);
+        put("vhskill:arcane_rail", SKILL_BASE_ID + 66);
+        put("vhskill:earthquake_landmine", SKILL_BASE_ID + 67);
+        put("vhskill:chain_lightning_orbs", SKILL_BASE_ID + 68);
+        put("vhskill:toxic_grenade", SKILL_BASE_ID + 69);
     }};
+
+    private static final java.util.Set<String> SPECIALIZATION_SKILLS = java.util.Set.of(
+            "vhskill:heal_group", "vhskill:heal_cleanse", "vhskill:dash_damage",
+            "vhskill:dash_warp", "vhskill:nova_slow", "vhskill:nova_dot",
+            "vhskill:ghost_walk_spirit", "vhskill:mega_jump_break_up",
+            "vhskill:mega_jump_break_down", "vhskill:rampage_leech",
+            "vhskill:rampage_chain", "vhskill:smite_archon",
+            "vhskill:smite_thunderstorm", "vhskill:empower_ice_armor",
+            "vhskill:empower_slowness_aura", "vhskill:vein_miner_fortune",
+            "vhskill:vein_miner_durability", "vhskill:vein_miner_void",
+            "vhskill:javelin_sight", "vhskill:mana_barrier",
+            "vhskill:mana_shield_retribution", "vhskill:implode_life_tap",
+            "vhskill:taunt_repel", "vhskill:taunt_charm", "vhskill:stonefall_snow",
+            "vhskill:stonefall_cold", "vhskill:totem_player_damage",
+            "vhskill:totem_mana_regen", "vhskill:totem_mob_damage",
+            "vhskill:javelin_piercing", "vhskill:javelin_scatter",
+            "vhskill:shell_porcupine", "vhskill:shell_quill",
+            "vhskill:fireball_volley", "vhskill:fireball_fireshot",
+            "vhskill:storm_arrow_blizzard", "vhskill:battle_cry_spectral_strike",
+            "vhskill:battle_cry_lucky_strike", "vhskill:ice_bolt_blast",
+            "vhskill:arcane_rail", "vhskill:earthquake_landmine",
+            "vhskill:chain_lightning_orbs", "vhskill:toxic_grenade"
+    );
 
     // ========== TALENT LOCATIONS HASHMAP (43100-43141) ==========
     // Based on locations.py order
@@ -223,6 +289,10 @@ public class VaultHuntersData {
     public static final long ITEM_LOOT_PLENTY = 43521L;
     public static final long ITEM_LOOT_EXTREME = 43522L;
 
+    public static final long ITEM_PROGRESSIVE_LEVEL_CAP = 43700L;
+    public static final long ITEM_PROGRESSIVE_XP_SCALING = 43701L;
+    public static final long ITEM_PROGRESSIVE_LOOT_SCALING = 43702L;
+
     // ==================== DYNAMIC REGISTRATION ====================
 
     private static long nextTalentId = TALENT_BASE_ID + 45; // Start after defined talents
@@ -315,7 +385,14 @@ public class VaultHuntersData {
         if ("vhskill:chain_lightning".equals(skillName)) {
             skillName = "vhskill:lightning_strike";
         }
+        if (SPECIALIZATION_SKILLS.contains(skillName)) {
+            return 0L;
+        }
         return SKILL_LOCATIONS.getOrDefault(skillName, 0L);
+    }
+
+    public static boolean isSpecializationSkill(String skillName) {
+        return SPECIALIZATION_SKILLS.contains(skillName);
     }
 
     /**

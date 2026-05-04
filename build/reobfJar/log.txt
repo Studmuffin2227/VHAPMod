@@ -1,5 +1,5 @@
 Java Launcher: C:\Program Files\Eclipse Adoptium\jdk-17.0.18.8-hotspot\bin\java.exe
-Arguments: '--in-jar, C:\Users\studm\Desktop\VHAPMod\build\libs\vhapmod-1.0.1.jar, --out-jar, C:\Users\studm\Desktop\VHAPMod\build\reobfJar\output.jar, --srg-in, C:\Users\studm\Desktop\VHAPMod\build\createMcpToSrg\output.tsrg, --srg-in, C:\Users\studm\Desktop\VHAPMod\build\tmp\compileJava\compileJava-mappings.tsrg, --live'
+Arguments: '--in-jar, C:\Users\studm\Desktop\VHAPMod\build\libs\vhapmod-1.1.0.jar, --out-jar, C:\Users\studm\Desktop\VHAPMod\build\reobfJar\output.jar, --srg-in, C:\Users\studm\Desktop\VHAPMod\build\createMcpToSrg\output.tsrg, --srg-in, C:\Users\studm\Desktop\VHAPMod\build\tmp\compileJava\compileJava-mappings.tsrg, --live'
 Classpath:
  - C:\Users\studm\.gradle\caches\forge_gradle\maven_downloader\net\md-5\SpecialSource\1.11.0\SpecialSource-1.11.0-shaded.jar
  - C:\Users\studm\Desktop\VHAPMod\libs\the_vault-1.18.2-3.21.4.1.6551.jar
@@ -100,13 +100,13 @@ Loading mappings... 50%
 0 packages, 6399 classes, 28861 fields, 53847 methods
 Remapping final jar
 Remapping jar...  2%
-Remapping jar... 10%
-Remapping jar... 20%
+Remapping jar... 11%
+Remapping jar... 21%
 Remapping jar... 30%
-Remapping jar... 40%
-Remapping jar... 50%
+Remapping jar... 41%
+Remapping jar... 51%
 Remapping jar... 60%
-Remapping jar... 70%
-Remapping jar... 80%
+Remapping jar... 71%
+Remapping jar... 81%
 Remapping jar... 90%
 Remapping jar... 100%

@@ -10,7 +10,9 @@
     "TalentLevelMessageMixin",
     "ExpertiseLevelMessageMixin",
     "ModResearchPreventionMixin",
-    "VaultGearLevelMixin"
+    "VaultGearLevelMixin",
+    "VaultExperienceMultiplierMixin",
+    "VaultLootMultiplierMixin"
   ],
   "client": [
     "AbilityTooltipMixin",

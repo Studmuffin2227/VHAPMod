@@ -1,6 +1,8 @@
 package com.example.vhapmod;
 
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.TextComponent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import java.lang.reflect.Method;
@@ -36,6 +38,16 @@ public class VaultHuntersManager {
     // Current XP and Loot gamerule states
     private String currentXPRule = "NORMAL";
     private String currentLootRule = "NORMAL";
+    private int levelCapProgress = 0;
+    private int xpScalingProgress = 0;
+    private int lootScalingProgress = 0;
+    private int maxXpScaling = 3;
+    private int maxLootScaling = 3;
+    private static final int[] LEVEL_CAP_STEPS = {10, 20, 40, 50, 100};
+    private static final String[] XP_RULE_STEPS = {"POOR", "HALF", "NORMAL", "DOUBLE", "TRIPLE", "TRIPLE", "TRIPLE"};
+    private static final float[] XP_MULTIPLIER_STEPS = {0.1f, 0.5f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+    private static final String[] LOOT_RULE_STEPS = {"LEGACY", "NORMAL", "PLENTY", "EXTREME", "EXTREME", "EXTREME"};
+    private static final float[] LOOT_MULTIPLIER_STEPS = {0.5f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
 
     // VH Data classes (loaded via reflection)
     private static Class<?> playerAbilitiesDataClass;
@@ -156,6 +168,33 @@ public class VaultHuntersManager {
 
     public void setGoalLevel(int level) {
         this.goalLevel = level;
+    }
+
+    public void setMaxXpScaling(int multiplier) {
+        this.maxXpScaling = Math.max(1, Math.min(5, multiplier));
+        LOGGER.info("Configured max XP scaling: {}x", this.maxXpScaling);
+    }
+
+    public void setMaxLootScaling(int multiplier) {
+        this.maxLootScaling = Math.max(1, Math.min(5, multiplier));
+        LOGGER.info("Configured max loot scaling: {}x", this.maxLootScaling);
+    }
+
+    public void initializeWorldProgression(net.minecraft.server.MinecraftServer server) {
+        levelCapProgress = 0;
+        xpScalingProgress = 0;
+        lootScalingProgress = 0;
+
+        executeServerCommand(server, "gamerule vaultLevelLock " + LEVEL_CAP_STEPS[levelCapProgress]);
+        executeServerCommand(server, "gamerule vaultExperience POOR");
+        executeServerCommand(server, "gamerule vaultLoot LEGACY");
+
+        APScalingManager.setXpMultiplier(XP_MULTIPLIER_STEPS[xpScalingProgress]);
+        APScalingManager.setLootMultiplier(LOOT_MULTIPLIER_STEPS[lootScalingProgress]);
+        currentXPRule = "POOR";
+        currentLootRule = "LEGACY";
+        LOGGER.info("Initialized AP progression: vaultLevelLock {}, vaultExperience POOR, vaultLoot LEGACY",
+                LEVEL_CAP_STEPS[levelCapProgress]);
     }
 
     public void setTotalQuestChecks(int count) {
@@ -296,6 +335,92 @@ public class VaultHuntersManager {
         }
     }
 
+    public boolean applyProgressionItem(long itemId, ServerPlayer player) {
+        if (itemId == VaultHuntersData.ITEM_PROGRESSIVE_LEVEL_CAP) {
+            applyNextLevelCap(player);
+            return true;
+        }
+        if (itemId == VaultHuntersData.ITEM_PROGRESSIVE_XP_SCALING) {
+            applyNextXpScaling(player);
+            return true;
+        }
+        if (itemId == VaultHuntersData.ITEM_PROGRESSIVE_LOOT_SCALING) {
+            applyNextLootScaling(player);
+            return true;
+        }
+        return false;
+    }
+
+    private void applyNextLevelCap(ServerPlayer player) {
+        int maxIndex = 0;
+        for (int i = 0; i < LEVEL_CAP_STEPS.length; i++) {
+            if (LEVEL_CAP_STEPS[i] <= goalLevel) {
+                maxIndex = i;
+            }
+        }
+        levelCapProgress = Math.min(levelCapProgress + 1, maxIndex);
+        int cap = LEVEL_CAP_STEPS[levelCapProgress];
+        executeServerCommand(player, "gamerule vaultLevelLock " + cap);
+        player.sendMessage(new TextComponent("[AP] Vault level cap set to " + cap).withStyle(ChatFormatting.GREEN), player.getUUID());
+    }
+
+    private void applyNextXpScaling(ServerPlayer player) {
+        int maxIndex = getXpStepIndex(maxXpScaling);
+        xpScalingProgress = Math.min(xpScalingProgress + 1, maxIndex);
+        float multiplier = XP_MULTIPLIER_STEPS[xpScalingProgress];
+        String rule = XP_RULE_STEPS[xpScalingProgress];
+        APScalingManager.setXpMultiplier(multiplier);
+        executeServerCommand(player, "gamerule vaultExperience " + rule);
+        currentXPRule = rule;
+        player.sendMessage(new TextComponent("[AP] Vault XP scaling set to " + multiplier + "x").withStyle(ChatFormatting.GREEN), player.getUUID());
+        LOGGER.info("Set AP XP scaling to {}x using vaultExperience {}", multiplier, rule);
+    }
+
+    private void applyNextLootScaling(ServerPlayer player) {
+        int maxIndex = getLootStepIndex(maxLootScaling);
+        lootScalingProgress = Math.min(lootScalingProgress + 1, maxIndex);
+        float multiplier = LOOT_MULTIPLIER_STEPS[lootScalingProgress];
+        String rule = LOOT_RULE_STEPS[lootScalingProgress];
+        APScalingManager.setLootMultiplier(multiplier);
+        executeServerCommand(player, "gamerule vaultLoot " + rule);
+        currentLootRule = rule;
+        player.sendMessage(new TextComponent("[AP] Vault loot scaling set to " + multiplier + "x").withStyle(ChatFormatting.GREEN), player.getUUID());
+        LOGGER.info("Set AP loot scaling to {}x using vaultLoot {}", multiplier, rule);
+    }
+
+    private int getXpStepIndex(int targetMultiplier) {
+        return switch (Math.max(1, Math.min(5, targetMultiplier))) {
+            case 1 -> 2;
+            case 2 -> 3;
+            case 3 -> 4;
+            case 4 -> 5;
+            default -> 6;
+        };
+    }
+
+    private int getLootStepIndex(int targetMultiplier) {
+        return switch (Math.max(1, Math.min(5, targetMultiplier))) {
+            case 1 -> 1;
+            case 2 -> 2;
+            case 3 -> 3;
+            case 4 -> 4;
+            default -> 5;
+        };
+    }
+
+    private void executeServerCommand(ServerPlayer player, String command) {
+        executeServerCommand(player.getServer(), command);
+    }
+
+    private void executeServerCommand(net.minecraft.server.MinecraftServer server, String command) {
+        server.getCommands().performCommand(
+                server.createCommandSourceStack()
+                        .withSuppressedOutput()
+                        .withPermission(2),
+                command
+        );
+    }
+
     // ==================== ITEM APPLICATION ====================
 
     /**
@@ -386,7 +511,6 @@ public class VaultHuntersManager {
         if (!currentXPRule.equals(rule)) {
             currentXPRule = rule;
             LOGGER.info("Setting VH XP gamerule to: {}", rule);
-            // TODO: Execute command: /gamerule vaultExperience [rule]
         }
     }
 
@@ -397,7 +521,6 @@ public class VaultHuntersManager {
         if (!currentLootRule.equals(rule)) {
             currentLootRule = rule;
             LOGGER.info("Setting VH Loot gamerule to: {}", rule);
-            // TODO: Execute command: /gamerule vaultLoot [rule]
         }
     }
 

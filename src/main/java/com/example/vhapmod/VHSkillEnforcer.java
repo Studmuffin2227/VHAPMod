@@ -205,6 +205,26 @@ public class VHSkillEnforcer {
                     LOGGER.warn("Removing unauthorized {} '{}' from {}",
                             isAbility ? "skill" : "talent", name, player.getName().getString());
 
+                    if (isAbility && VaultHuntersData.isSpecializationSkill(normalized)) {
+                        boolean reset = resetSelectedSpecialization(skillTree, skill, player);
+                        if (reset) {
+                            anyRemoved = true;
+                            player.sendMessage(
+                                    new TextComponent("[AP] ").withStyle(ChatFormatting.RED)
+                                            .append(new TextComponent(name + " is locked! Its specialization has been reset.")),
+                                    player.getUUID()
+                            );
+
+                            try {
+                                Method setDirty = dataObject.getClass().getMethod("setDirty");
+                                setDirty.invoke(dataObject);
+                            } catch (Exception e) {
+                                LOGGER.warn("Could not mark data as dirty");
+                            }
+                            continue;
+                        }
+                    }
+
                     // Get the cost BEFORE removing
                     int pointCost = getSkillPointCost(skill);
 
@@ -248,6 +268,55 @@ public class VHSkillEnforcer {
             e.printStackTrace();
             return false;
         }
+    }
+
+    private static boolean resetSelectedSpecialization(Object skillTree, Object specializationSkill, ServerPlayer player) {
+        try {
+            Method getTargetId = specializationSkill.getClass().getMethod("getId");
+            String targetId = (String) getTargetId.invoke(specializationSkill);
+
+            Class<?> specializedSkillClass = Class.forName("iskallia.vault.skill.base.SpecializedSkill");
+            Method iterate = skillTree.getClass().getMethod("iterate", Class.class, java.util.function.Consumer.class);
+            List<Object> parents = new ArrayList<>();
+            iterate.invoke(skillTree, specializedSkillClass, (java.util.function.Consumer<Object>) parents::add);
+
+            Object context = createSkillContext(player);
+            for (Object parent : parents) {
+                Method getSpecialization = parent.getClass().getMethod("getSpecialization");
+                Object selected = getSpecialization.invoke(parent);
+                if (selected == null) {
+                    continue;
+                }
+
+                Method getSelectedId = selected.getClass().getMethod("getId");
+                String selectedId = (String) getSelectedId.invoke(selected);
+                if (!targetId.equals(selectedId)) {
+                    continue;
+                }
+
+                Method resetSpecialization = parent.getClass().getMethod(
+                        "resetSpecialization",
+                        Class.forName("iskallia.vault.skill.base.SkillContext")
+                );
+                resetSpecialization.invoke(parent, context);
+
+                try {
+                    Method sync = skillTree.getClass().getMethod(
+                            "sync",
+                            Class.forName("iskallia.vault.skill.base.SkillContext")
+                    );
+                    sync.invoke(skillTree, context);
+                } catch (Exception e) {
+                    LOGGER.debug("Could not sync ability tree after specialization reset: {}", e.getMessage());
+                }
+
+                LOGGER.info("Reset locked specialization {} without removing parent skill", targetId);
+                return true;
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Failed to reset selected specialization only: {}", e.getMessage());
+        }
+        return false;
     }
 
 

@@ -30,7 +30,9 @@ public class APSkillLockManager {
     private static final Map<UUID, Set<String>> unlockedExpertises = new HashMap<>();
     private static final Map<UUID, Set<String>> unlockedMods = new HashMap<>();
     private static final Map<String, String> SKILL_ALIASES = createSkillAliases();
+    private static final Map<String, String> TALENT_ALIASES = createTalentAliases();
     private static final Map<String, String> MOD_ALIASES = createModAliases();
+    private static boolean lockSpecializations = true;
 
     // Debug mode - set to true to unlock everything (for testing without AP)
     private static boolean DEBUG_MODE = false;
@@ -71,8 +73,11 @@ public class APSkillLockManager {
      */
     public static boolean isSkillUnlockedSilent(ServerPlayer player, String skillName) {
         if (DEBUG_MODE) return true;
-        UUID uuid = player.getUUID();
         String normalizedName = normalizeSkillName(skillName);
+        if (!lockSpecializations && SPECIALIZATION_KEYS.contains(normalizedName)) {
+            return true;
+        }
+        UUID uuid = player.getUUID();
         Set<String> playerSkills = unlockedSkills.getOrDefault(uuid, new HashSet<>());
         return playerSkills.contains(normalizedName);
     }
@@ -296,21 +301,18 @@ public class APSkillLockManager {
 
     private static String normalizeSkillName(String name) {
         String normalized = normalizeRawName(name);
-        normalized = SKILL_ALIASES.getOrDefault(normalized, normalized);
-
-        for (String skill : AP_SKILL_KEYS) {
-            if (normalized.startsWith(skill + "_")) {
-                normalized = skill;
-                break;
-            }
+        if (normalized.matches(".*_\\d+$")) {
+            normalized = normalized.replaceFirst("_\\d+$", "");
         }
-
+        if (normalized.matches(".*_lvl\\d+$")) {
+            normalized = normalized.replaceFirst("_lvl\\d+$", "");
+        }
         normalized = SKILL_ALIASES.getOrDefault(normalized, normalized);
         return "vhskill:" + normalized;
     }
 
     private static String normalizeTalentName(String name) {
-        return normalizeName("vhtalent:", name, null);
+        return normalizeName("vhtalent:", name, TALENT_ALIASES);
     }
 
     private static String normalizeExpertiseName(String name) {
@@ -357,31 +359,133 @@ public class APSkillLockManager {
         Map<String, String> aliases = new HashMap<>();
         aliases.put("chain_lightning", "lightning_strike");
         aliases.put("chain_lightning_base", "lightning_strike");
-        aliases.put("chain_lightning_orbs", "lightning_strike");
-        aliases.put("ball_lightning", "lightning_strike");
         aliases.put("grenade", "chaos_cube");
         aliases.put("grenade_base", "chaos_cube");
-        aliases.put("toxic_grenade", "chaos_cube");
         aliases.put("totem", "rejuvenation_totem");
         aliases.put("totem_base", "rejuvenation_totem");
-        aliases.put("totem_player_damage", "rejuvenation_totem");
-        aliases.put("totem_mana_regen", "rejuvenation_totem");
-        aliases.put("totem_mob_damage", "rejuvenation_totem");
         aliases.put("totem_rejuv", "rejuvenation_totem");
-        aliases.put("totem_wrath", "rejuvenation_totem");
-        aliases.put("totem_spirit", "rejuvenation_totem");
-        aliases.put("totem_hatred", "rejuvenation_totem");
-        aliases.put("mana_barrier", "mana_shield");
-        aliases.put("retribution", "shield_bash");
-        aliases.put("mana_shield_retribution", "shield_bash");
-        aliases.put("mana_shield_implode", "implode");
-        aliases.put("life_tap", "implode");
-        aliases.put("stonefall_snow", "stonefall");
-        aliases.put("herolanding", "stonefall");
-        aliases.put("stonefall_cold", "stonefall");
-        aliases.put("coldfall", "stonefall");
         aliases.put("sa_thunder", "storm_arrow");
-        aliases.put("sa_blizzard", "storm_arrow");
+        aliases.put("lightning_strike", "lightning_strike");
+        aliases.put("chaos_cube", "chaos_cube");
+        aliases.put("nova_base", "nova");
+        aliases.put("fireball_base", "fireball");
+        aliases.put("javelin_base", "javelin");
+        aliases.put("stonefall_base", "stonefall");
+        aliases.put("ice_bolt_base", "ice_bolt");
+        aliases.put("implode_base", "implode");
+        aliases.put("mana_shield_implode", "implode");
+        aliases.put("shield_bash_base", "shield_bash");
+        aliases.put("retribution", "shield_bash");
+        aliases.put("arcane_base", "arcane");
+        aliases.put("earthquake_base", "earthquake");
+        aliases.put("dash_base", "dash");
+        aliases.put("vein_miner_base", "vein_miner");
+        aliases.put("ghost_walk_base", "ghost_walk");
+        aliases.put("rampage_base", "rampage");
+        aliases.put("mega_jump_base", "mega_jump");
+        aliases.put("shell_base", "shell");
+        aliases.put("taunt_base", "taunt");
+        aliases.put("heal_base", "heal");
+        aliases.put("angel_base", "angel");
+        aliases.put("empower_base", "empower");
+        aliases.put("hunter_base", "hunter");
+        aliases.put("smite_base", "smite");
+        aliases.put("storm_arrow_base", "storm_arrow");
+        aliases.put("battle_cry_base", "battle_cry");
+        aliases.put("mana_shield_base", "mana_shield");
+
+        aliases.put("heal_group", "heal_group");
+        aliases.put("heal_aid", "heal_group");
+        aliases.put("group_heal", "heal_group");
+        aliases.put("heal_cleanse", "heal_cleanse");
+        aliases.put("cleanse", "heal_cleanse");
+        aliases.put("dash_damage", "dash_damage");
+        aliases.put("dash_bullet", "dash_damage");
+        aliases.put("bullet", "dash_damage");
+        aliases.put("dash_warp", "dash_warp");
+        aliases.put("nova_slow", "nova_slow");
+        aliases.put("nova_frost", "nova_slow");
+        aliases.put("frost_nova", "nova_slow");
+        aliases.put("nova_dot", "nova_dot");
+        aliases.put("poison_nova", "nova_dot");
+        aliases.put("ghost_walk_spirit", "ghost_walk_spirit");
+        aliases.put("spirit_walk", "ghost_walk_spirit");
+        aliases.put("mega_jump_break_up", "mega_jump_break_up");
+        aliases.put("mega_jump_drill", "mega_jump_break_up");
+        aliases.put("mega_jump_break_down", "mega_jump_break_down");
+        aliases.put("mega_drill", "mega_jump_break_down");
+        aliases.put("mega_dig", "mega_jump_break_down");
+        aliases.put("rampage_leech", "rampage_leech");
+        aliases.put("vampiric", "rampage_leech");
+        aliases.put("rampage_chain", "rampage_chain");
+        aliases.put("chaining", "rampage_chain");
+        aliases.put("smite_archon", "smite_archon");
+        aliases.put("archon", "smite_archon");
+        aliases.put("smite_thunderstorm", "smite_thunderstorm");
+        aliases.put("empower_ice_armor", "empower_ice_armor");
+        aliases.put("ice_armour", "empower_ice_armor");
+        aliases.put("ice_armor", "empower_ice_armor");
+        aliases.put("empower_slowness_aura", "empower_slowness_aura");
+        aliases.put("entropic_bind", "empower_slowness_aura");
+        aliases.put("vein_miner_fortune", "vein_miner_fortune");
+        aliases.put("vein_miner_durability", "vein_miner_durability");
+        aliases.put("finesse_miner", "vein_miner_durability");
+        aliases.put("vein_miner_void", "vein_miner_void");
+        aliases.put("void_miner", "vein_miner_void");
+        aliases.put("javelin_sight", "javelin_sight");
+        aliases.put("hunter_javelin", "javelin_sight");
+        aliases.put("mana_barrier", "mana_barrier");
+        aliases.put("mana_shield_retribution", "mana_shield_retribution");
+        aliases.put("shield_bash_retribution", "mana_shield_retribution");
+        aliases.put("implode_life_tap", "implode_life_tap");
+        aliases.put("mana_implode", "implode");
+        aliases.put("life_tap", "implode_life_tap");
+        aliases.put("taunt_repel", "taunt_repel");
+        aliases.put("fear", "taunt_repel");
+        aliases.put("taunt_charm", "taunt_charm");
+        aliases.put("charm", "taunt_charm");
+        aliases.put("stonefall_snow", "stonefall_snow");
+        aliases.put("heros_landing", "stonefall_snow");
+        aliases.put("herolanding", "stonefall_snow");
+        aliases.put("stonefall_cold", "stonefall_cold");
+        aliases.put("coldsnap", "stonefall_cold");
+        aliases.put("coldfall", "stonefall_cold");
+        aliases.put("totem_player_damage", "totem_player_damage");
+        aliases.put("wrath_totem", "totem_player_damage");
+        aliases.put("totem_mana_regen", "totem_mana_regen");
+        aliases.put("spirit_totem", "totem_mana_regen");
+        aliases.put("totem_mob_damage", "totem_mob_damage");
+        aliases.put("hatred_totem", "totem_mob_damage");
+        aliases.put("javelin_piercing", "javelin_piercing");
+        aliases.put("javelin_pierce", "javelin_piercing");
+        aliases.put("piercing_javelin", "javelin_piercing");
+        aliases.put("javelin_scatter", "javelin_scatter");
+        aliases.put("scatter_javelin", "javelin_scatter");
+        aliases.put("shell_porcupine", "shell_porcupine");
+        aliases.put("porcupine", "shell_porcupine");
+        aliases.put("shell_quill", "shell_quill");
+        aliases.put("quill", "shell_quill");
+        aliases.put("fireball_volley", "fireball_volley");
+        aliases.put("fire_volley", "fireball_volley");
+        aliases.put("fireball_fireshot", "fireball_fireshot");
+        aliases.put("fireshot", "fireball_fireshot");
+        aliases.put("storm_arrow_blizzard", "storm_arrow_blizzard");
+        aliases.put("sa_blizzard", "storm_arrow_blizzard");
+        aliases.put("blizzard_arrow", "storm_arrow_blizzard");
+        aliases.put("battle_cry_spectral_strike", "battle_cry_spectral_strike");
+        aliases.put("spectral_cry", "battle_cry_spectral_strike");
+        aliases.put("battle_cry_lucky_strike", "battle_cry_lucky_strike");
+        aliases.put("lucky_cry", "battle_cry_lucky_strike");
+        aliases.put("ice_bolt_blast", "ice_bolt_blast");
+        aliases.put("glacial_blast", "ice_bolt_blast");
+        aliases.put("arcane_rail", "arcane_rail");
+        aliases.put("rail", "arcane_rail");
+        aliases.put("earthquake_landmine", "earthquake_landmine");
+        aliases.put("landmine", "earthquake_landmine");
+        aliases.put("chain_lightning_orbs", "chain_lightning_orbs");
+        aliases.put("ball_lightning", "chain_lightning_orbs");
+        aliases.put("toxic_grenade", "toxic_grenade");
+        aliases.put("toxic_vial", "toxic_grenade");
         return aliases;
     }
 
@@ -392,6 +496,46 @@ public class APSkillLockManager {
             "heal", "angel", "empower", "hunter", "smite", "storm_arrow",
             "battle_cry", "rejuvenation_totem", "mana_shield", "chaos_cube"
     );
+
+    private static final Set<String> SPECIALIZATION_KEYS = Set.of(
+            "vhskill:heal_group", "vhskill:heal_cleanse", "vhskill:dash_damage",
+            "vhskill:dash_warp", "vhskill:nova_slow", "vhskill:nova_dot",
+            "vhskill:ghost_walk_spirit", "vhskill:mega_jump_break_up",
+            "vhskill:mega_jump_break_down", "vhskill:rampage_leech",
+            "vhskill:rampage_chain", "vhskill:smite_archon",
+            "vhskill:smite_thunderstorm", "vhskill:empower_ice_armor",
+            "vhskill:empower_slowness_aura", "vhskill:vein_miner_fortune",
+            "vhskill:vein_miner_durability", "vhskill:vein_miner_void",
+            "vhskill:javelin_sight", "vhskill:mana_barrier",
+            "vhskill:mana_shield_retribution", "vhskill:implode_life_tap",
+            "vhskill:taunt_repel", "vhskill:taunt_charm", "vhskill:stonefall_snow",
+            "vhskill:stonefall_cold", "vhskill:totem_player_damage",
+            "vhskill:totem_mana_regen", "vhskill:totem_mob_damage",
+            "vhskill:javelin_piercing", "vhskill:javelin_scatter",
+            "vhskill:shell_porcupine", "vhskill:shell_quill",
+            "vhskill:fireball_volley", "vhskill:fireball_fireshot",
+            "vhskill:storm_arrow_blizzard", "vhskill:battle_cry_spectral_strike",
+            "vhskill:battle_cry_lucky_strike", "vhskill:ice_bolt_blast",
+            "vhskill:arcane_rail", "vhskill:earthquake_landmine",
+            "vhskill:chain_lightning_orbs", "vhskill:toxic_grenade"
+    );
+
+    private static Map<String, String> createTalentAliases() {
+        Map<String, String> aliases = new HashMap<>();
+        aliases.put("stone_skin", "stoneskin");
+        aliases.put("lightning_stun", "lightning_finesse");
+        aliases.put("lightning_damage", "lightning_mastery");
+        aliases.put("javelin_throw_power", "throw_power");
+        aliases.put("javelin_damage", "damage");
+        aliases.put("javelin_conduct", "conduct");
+        aliases.put("javelin_frugal", "ethereal");
+        return aliases;
+    }
+
+    public static void setLockSpecializations(boolean enabled) {
+        lockSpecializations = enabled;
+        LOGGER.info("AP specialization locking: {}", enabled ? "enabled" : "disabled");
+    }
 
     private static Map<String, String> createModAliases() {
         Map<String, String> aliases = new HashMap<>();
@@ -459,6 +603,9 @@ public class APSkillLockManager {
     // Client-side check methods
     public static boolean isSkillUnlockedClient(String skillName) {
         String key = canonicalSkillKey(skillName);
+        if (!lockSpecializations && SPECIALIZATION_KEYS.contains(key)) {
+            return true;
+        }
         boolean unlocked = clientUnlockedSkills.contains(key);
         LOGGER.debug("Client unlock check - Skill: '{}' -> Key: '{}' -> Unlocked: {} (Cache: {})",
                 skillName, key, unlocked, clientUnlockedSkills);
