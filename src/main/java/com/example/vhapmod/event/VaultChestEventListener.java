@@ -1,10 +1,13 @@
 package com.example.vhapmod.event;
 
+import com.example.vhapmod.APGearRarityManager;
+import com.example.vhapmod.VHDataReader;
 import com.example.vhapmod.VaultHuntersAPMod;
 import com.example.vhapmod.VaultHuntersManager;
 import com.example.vhapmod.item.ModItems;
 import iskallia.vault.core.event.common.ChestGenerationEvent;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -34,6 +37,21 @@ public class VaultChestEventListener {
 
         VaultHuntersManager manager = VaultHuntersAPMod.getManager();
         if (manager == null) {
+            return;
+        }
+
+        if (data.getPhase() == ChestGenerationEvent.Phase.POST) {
+            int changed = 0;
+            int itemLevel = VHDataReader.getPlayerLevel(serverPlayer);
+            for (ItemStack stack : data.getLoot()) {
+                if (APGearRarityManager.forceStackRarity(stack, itemLevel)) {
+                    changed++;
+                }
+            }
+            if (changed > 0) {
+                LOGGER.debug("Forced {} generated vault gear stack(s) to {} rarity",
+                        changed, APGearRarityManager.getForcedRarityName());
+            }
             return;
         }
 
@@ -81,15 +99,20 @@ public class VaultChestEventListener {
         LOGGER.info("Player {} found chest check #{} at pos {} ({}% chance)",
                 serverPlayer.getName().getString(), checkNumber, chestPos, (checkChance * 100));
 
-        // Create the CLAIMABLE check item
         ItemStack checkItem = ModItems.getCheckItemStack(locationId);
+        ItemStack inventoryCopy = checkItem.copy();
+        boolean added = serverPlayer.getInventory().add(inventoryCopy);
 
-        // Give directly to player inventory
-        boolean added = serverPlayer.getInventory().add(checkItem);
-
-        if (!added) {
-            serverPlayer.drop(checkItem, false);
-            LOGGER.debug("Dropped check item (inventory full)");
+        if (!added || !inventoryCopy.isEmpty()) {
+            ItemStack dropStack = inventoryCopy.isEmpty() ? checkItem.copy() : inventoryCopy.copy();
+            ItemEntity dropped = serverPlayer.drop(dropStack, false);
+            if (dropped != null) {
+                dropped.setNoPickUpDelay();
+                dropped.setOwner(serverPlayer.getUUID());
+                LOGGER.debug("Dropped check item (inventory full)");
+            } else {
+                LOGGER.warn("Failed to add or drop AP chest check #{} for {}", checkNumber, serverPlayer.getName().getString());
+            }
         } else {
             LOGGER.debug("Added check item to player inventory");
         }

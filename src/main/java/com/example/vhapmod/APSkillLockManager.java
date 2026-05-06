@@ -174,11 +174,6 @@ public class APSkillLockManager {
         LOGGER.info("All unlocked skills for player: {}", playerSkills);
         LOGGER.info("========================");
 
-        net.minecraft.network.chat.MutableComponent skillMessage =
-                new TextComponent("[AP] ")
-                        .withStyle(net.minecraft.ChatFormatting.GREEN)
-                        .append(new TextComponent("Unlocked skill: " + skillName));
-        player.sendMessage(skillMessage, uuid);
         syncToClient(player);
     }
 
@@ -202,11 +197,6 @@ public class APSkillLockManager {
         LOGGER.info("All unlocked talents for player: {}", playerTalents);
         LOGGER.info("========================");
 
-        net.minecraft.network.chat.MutableComponent talentMessage =
-                new TextComponent("[AP] ")
-                        .withStyle(net.minecraft.ChatFormatting.GREEN)
-                        .append(new TextComponent("Unlocked talent: " + talentName));
-        player.sendMessage(talentMessage, uuid);
         syncToClient(player);
     }
 
@@ -229,11 +219,6 @@ public class APSkillLockManager {
         LOGGER.info("Normalized: '{}'", normalizedName);
         LOGGER.info("========================");
 
-        net.minecraft.network.chat.MutableComponent expertiseMessage =
-                new TextComponent("[AP] ")
-                        .withStyle(net.minecraft.ChatFormatting.GREEN)
-                        .append(new TextComponent("Unlocked expertise: " + expertiseName));
-        player.sendMessage(expertiseMessage, uuid);
         syncToClient(player);
     }
 
@@ -252,11 +237,6 @@ public class APSkillLockManager {
         unlockData.addMod(uuid, normalizedName);
 
         LOGGER.info("Unlocked mod for {}: {}", player.getName().getString(), modName);
-        net.minecraft.network.chat.MutableComponent modMessage =
-                new TextComponent("[AP] ")
-                        .withStyle(net.minecraft.ChatFormatting.GREEN)
-                        .append(new TextComponent("Unlocked mod: " + modName));
-        player.sendMessage(modMessage, player.getUUID());
         syncToClient(player);
     }
 

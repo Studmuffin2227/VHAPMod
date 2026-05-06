@@ -43,6 +43,7 @@ public class VaultHuntersManager {
     private int lootScalingProgress = 0;
     private int maxXpScaling = 3;
     private int maxLootScaling = 3;
+    private boolean startWithVaultKit = false;
     private static final int[] LEVEL_CAP_STEPS = {10, 20, 40, 50, 100};
     private static final String[] XP_RULE_STEPS = {"POOR", "HALF", "NORMAL", "DOUBLE", "TRIPLE", "TRIPLE", "TRIPLE"};
     private static final float[] XP_MULTIPLIER_STEPS = {0.1f, 0.5f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
@@ -180,21 +181,71 @@ public class VaultHuntersManager {
         LOGGER.info("Configured max loot scaling: {}x", this.maxLootScaling);
     }
 
+    public void setStartWithVaultKit(boolean startWithVaultKit) {
+        this.startWithVaultKit = startWithVaultKit;
+        LOGGER.info("Configured starting vault kit: {}", startWithVaultKit);
+    }
+
     public void initializeWorldProgression(net.minecraft.server.MinecraftServer server) {
-        levelCapProgress = 0;
-        xpScalingProgress = 0;
-        lootScalingProgress = 0;
+        ReceivedItemsData receivedItems = ReceivedItemsData.get(server);
+        int maxLevelIndex = 0;
+        for (int i = 0; i < LEVEL_CAP_STEPS.length; i++) {
+            if (LEVEL_CAP_STEPS[i] <= goalLevel) {
+                maxLevelIndex = i;
+            }
+        }
+
+        levelCapProgress = Math.min(
+                receivedItems.getProcessedItemCount(VaultHuntersData.ITEM_PROGRESSIVE_LEVEL_CAP),
+                maxLevelIndex);
+        xpScalingProgress = Math.min(
+                receivedItems.getProcessedItemCount(VaultHuntersData.ITEM_PROGRESSIVE_XP_SCALING),
+                getXpStepIndex(maxXpScaling));
+        lootScalingProgress = Math.min(
+                receivedItems.getProcessedItemCount(VaultHuntersData.ITEM_PROGRESSIVE_LOOT_SCALING),
+                getLootStepIndex(maxLootScaling));
+        APGearRarityManager.setProgress(
+                receivedItems.getProcessedItemCount(VaultHuntersData.ITEM_PROGRESSIVE_GEAR_RARITY));
 
         executeServerCommand(server, "gamerule vaultLevelLock " + LEVEL_CAP_STEPS[levelCapProgress]);
-        executeServerCommand(server, "gamerule vaultExperience POOR");
-        executeServerCommand(server, "gamerule vaultLoot LEGACY");
+        executeServerCommand(server, "gamerule vaultExperience " + XP_RULE_STEPS[xpScalingProgress]);
+        executeServerCommand(server, "gamerule vaultLoot " + LOOT_RULE_STEPS[lootScalingProgress]);
 
         APScalingManager.setXpMultiplier(XP_MULTIPLIER_STEPS[xpScalingProgress]);
         APScalingManager.setLootMultiplier(LOOT_MULTIPLIER_STEPS[lootScalingProgress]);
-        currentXPRule = "POOR";
-        currentLootRule = "LEGACY";
-        LOGGER.info("Initialized AP progression: vaultLevelLock {}, vaultExperience POOR, vaultLoot LEGACY",
-                LEVEL_CAP_STEPS[levelCapProgress]);
+        currentXPRule = XP_RULE_STEPS[xpScalingProgress];
+        currentLootRule = LOOT_RULE_STEPS[lootScalingProgress];
+        LOGGER.info("Initialized AP progression: vaultLevelLock {}, vaultExperience {}, vaultLoot {}, gear rarity {}",
+                LEVEL_CAP_STEPS[levelCapProgress], currentXPRule, currentLootRule,
+                APGearRarityManager.getForcedRarityName());
+    }
+
+    public void grantStartingKitIfEnabled(ServerPlayer player) {
+        if (!startWithVaultKit) {
+            return;
+        }
+
+        APProgressData progressData = APProgressData.get(player.getServer());
+        if (!progressData.markStartingKitClaimed(player.getUUID())) {
+            return;
+        }
+
+        giveStartingKitItem(player, "minecraft:iron_helmet", 1);
+        giveStartingKitItem(player, "minecraft:iron_chestplate", 1);
+        giveStartingKitItem(player, "minecraft:iron_leggings", 1);
+        giveStartingKitItem(player, "minecraft:iron_boots", 1);
+        giveStartingKitItem(player, "minecraft:iron_sword", 1);
+        giveStartingKitItem(player, "minecraft:iron_pickaxe", 1);
+        giveStartingKitItem(player, "minecraft:iron_axe", 1);
+        giveStartingKitItem(player, "minecraft:iron_shovel", 1);
+        giveStartingKitItem(player, "the_vault:raw_chromatic_iron", 16);
+        giveStartingKitItem(player, "the_vault:vault_stone", 10);
+        giveStartingKitItem(player, "the_vault:vault_altar", 1);
+        player.sendMessage(new TextComponent("[AP] Starting vault kit granted").withStyle(ChatFormatting.GREEN), player.getUUID());
+    }
+
+    private void giveStartingKitItem(ServerPlayer player, String itemId, int count) {
+        executeServerCommand(player, String.format("give %s %s %d", player.getName().getString(), itemId, count));
     }
 
     public void setTotalQuestChecks(int count) {
@@ -348,6 +399,10 @@ public class VaultHuntersManager {
             applyNextLootScaling(player);
             return true;
         }
+        if (itemId == VaultHuntersData.ITEM_PROGRESSIVE_GEAR_RARITY) {
+            applyNextGearRarity(player);
+            return true;
+        }
         return false;
     }
 
@@ -361,7 +416,7 @@ public class VaultHuntersManager {
         levelCapProgress = Math.min(levelCapProgress + 1, maxIndex);
         int cap = LEVEL_CAP_STEPS[levelCapProgress];
         executeServerCommand(player, "gamerule vaultLevelLock " + cap);
-        player.sendMessage(new TextComponent("[AP] Vault level cap set to " + cap).withStyle(ChatFormatting.GREEN), player.getUUID());
+        LOGGER.info("Set AP vault level cap to {}", cap);
     }
 
     private void applyNextXpScaling(ServerPlayer player) {
@@ -372,7 +427,6 @@ public class VaultHuntersManager {
         APScalingManager.setXpMultiplier(multiplier);
         executeServerCommand(player, "gamerule vaultExperience " + rule);
         currentXPRule = rule;
-        player.sendMessage(new TextComponent("[AP] Vault XP scaling set to " + multiplier + "x").withStyle(ChatFormatting.GREEN), player.getUUID());
         LOGGER.info("Set AP XP scaling to {}x using vaultExperience {}", multiplier, rule);
     }
 
@@ -384,8 +438,12 @@ public class VaultHuntersManager {
         APScalingManager.setLootMultiplier(multiplier);
         executeServerCommand(player, "gamerule vaultLoot " + rule);
         currentLootRule = rule;
-        player.sendMessage(new TextComponent("[AP] Vault loot scaling set to " + multiplier + "x").withStyle(ChatFormatting.GREEN), player.getUUID());
         LOGGER.info("Set AP loot scaling to {}x using vaultLoot {}", multiplier, rule);
+    }
+
+    private void applyNextGearRarity(ServerPlayer player) {
+        var rarity = APGearRarityManager.advance();
+        LOGGER.info("Set AP vault gear rarity to {}", rarity.name());
     }
 
     private int getXpStepIndex(int targetMultiplier) {
@@ -558,6 +616,28 @@ public class VaultHuntersManager {
             }
         } catch (Exception e) {
             LOGGER.error("Failed to send quest check: {}", e.getMessage());
+        }
+    }
+
+    public void onArtifactPuzzleCompleted(ServerPlayer player) {
+        APProgressData progressData = APProgressData.get(player.getServer());
+        if (!progressData.markArtifactPuzzleCompleted()) {
+            return;
+        }
+        sendLocationCheck(VaultHuntersData.GOAL_BASE_ID, player, "Complete Artifact Puzzle");
+        if (apClient != null) {
+            apClient.checkSpecialGoalReached(player, "artifact_puzzle");
+        }
+    }
+
+    public void onHeraldDefeated(ServerPlayer player) {
+        APProgressData progressData = APProgressData.get(player.getServer());
+        if (!progressData.markHeraldDefeated()) {
+            return;
+        }
+        sendLocationCheck(VaultHuntersData.GOAL_BASE_ID + 1, player, "Defeat The Herald");
+        if (apClient != null) {
+            apClient.checkSpecialGoalReached(player, "herald");
         }
     }
     public void onTrinketFound(ServerPlayer player, String trinketLocationName) {

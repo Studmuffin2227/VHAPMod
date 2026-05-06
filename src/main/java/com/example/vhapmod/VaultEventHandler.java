@@ -48,6 +48,9 @@ public class VaultEventHandler {
 
             // Check player progression against AP
             checkPlayerProgression(player);
+            if (manager != null) {
+                manager.grantStartingKitIfEnabled(player);
+            }
 
             // Sync Client To Server
             syncToClient(player);

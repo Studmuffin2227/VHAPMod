@@ -11,8 +11,11 @@
     "ExpertiseLevelMessageMixin",
     "ModResearchPreventionMixin",
     "VaultGearLevelMixin",
+    "VaultGearRarityMixin",
     "VaultExperienceMultiplierMixin",
-    "VaultLootMultiplierMixin"
+    "VaultLootMultiplierMixin",
+    "ArtifactProjectorCompletionMixin",
+    "HeraldDefeatMixin"
   ],
   "client": [
     "AbilityTooltipMixin",

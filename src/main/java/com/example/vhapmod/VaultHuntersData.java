@@ -23,6 +23,7 @@ public class VaultHuntersData {
     public static final long MOD_BASE_ID = 43200L;
     public static final long EXPERTISE_BASE_ID = 43300L;
     public static final long MILESTONE_BASE_ID = 43400L;
+    public static final long GOAL_BASE_ID = 43750L;
 
     // Skills (26 total) - IDs 43000-43025
     private static final HashMap<String, Long> SKILL_LOCATIONS = new HashMap<>() {{
@@ -269,6 +270,11 @@ public class VaultHuntersData {
         put("vhmilestone:complete_50_vaults", MILESTONE_BASE_ID + 8);
     }};
 
+    private static final HashMap<String, Long> GOAL_LOCATIONS = new HashMap<>() {{
+        put("Goal: Complete Artifact Puzzle", GOAL_BASE_ID);
+        put("Goal: Defeat The Herald", GOAL_BASE_ID + 1);
+    }};
+
     // ==================== ITEM IDs (REWARDS) ====================
 
     // Filler/Progressive Items
@@ -292,6 +298,7 @@ public class VaultHuntersData {
     public static final long ITEM_PROGRESSIVE_LEVEL_CAP = 43700L;
     public static final long ITEM_PROGRESSIVE_XP_SCALING = 43701L;
     public static final long ITEM_PROGRESSIVE_LOOT_SCALING = 43702L;
+    public static final long ITEM_PROGRESSIVE_GEAR_RARITY = 43703L;
 
     // ==================== DYNAMIC REGISTRATION ====================
 
@@ -347,6 +354,7 @@ public class VaultHuntersData {
         all.putAll(MOD_LOCATIONS);
         all.putAll(EXPERTISE_LOCATIONS);
         all.putAll(MILESTONE_LOCATIONS);
+        all.putAll(GOAL_LOCATIONS);
         all.putAll(QUEST_LOCATIONS);
         all.putAll(TRINKET_LOCATIONS);
         return all;
@@ -367,6 +375,9 @@ public class VaultHuntersData {
             if (entry.getValue() == locationId) return entry.getKey();
         }
         for (Map.Entry<String, Long> entry : MILESTONE_LOCATIONS.entrySet()) {
+            if (entry.getValue() == locationId) return entry.getKey();
+        }
+        for (Map.Entry<String, Long> entry : GOAL_LOCATIONS.entrySet()) {
             if (entry.getValue() == locationId) return entry.getKey();
         }
         for (Map.Entry<String, Long> entry : QUEST_LOCATIONS.entrySet()) {
@@ -657,6 +668,9 @@ public class VaultHuntersData {
         }
         if (MILESTONE_LOCATIONS.containsKey(locationName)) {
             return MILESTONE_LOCATIONS.get(locationName);
+        }
+        if (GOAL_LOCATIONS.containsKey(locationName)) {
+            return GOAL_LOCATIONS.get(locationName);
         }
         if (QUEST_LOCATIONS.containsKey(locationName)) {
             return QUEST_LOCATIONS.get(locationName);

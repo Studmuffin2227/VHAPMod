@@ -2,6 +2,7 @@ package com.example.vhapmod;
 
 import com.google.gson.*;
 import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.TextComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -46,6 +47,13 @@ public class APWebSocketClient implements WebSocket.Listener {
     private Set<Long> checkedLocations = new HashSet<>();
     private Set<String> processedItems = new HashSet<>();
     private int goalLevel = 100;
+    private String goalType = "level";
+    private final Map<Integer, String> playerNames = new HashMap<>();
+    private final Map<Integer, String> playerGames = new HashMap<>();
+    private final Map<String, Map<Long, String>> itemNamesByGame = new HashMap<>();
+    private final Map<String, Map<Long, String>> locationNamesByGame = new HashMap<>();
+    private final List<JsonObject> pendingItemMessages = new ArrayList<>();
+    private boolean requestedDataPackage = false;
 
     public APWebSocketClient(VaultHuntersManager manager) {
         this.vhManager = manager;
@@ -129,8 +137,8 @@ public class APWebSocketClient implements WebSocket.Listener {
     private JsonObject getAPVersion() {
         JsonObject version = new JsonObject();
         version.addProperty("major", 0);
-        version.addProperty("minor", 5);
-        version.addProperty("build", 1);
+        version.addProperty("minor", 6);
+        version.addProperty("build", 6);
         version.addProperty("class", "Version");
         return version;
     }
@@ -231,6 +239,9 @@ public class APWebSocketClient implements WebSocket.Listener {
             case "LocationInfo":
                 handleLocationInfo(packet);
                 break;
+            case "DataPackage":
+                handleDataPackage(packet);
+                break;
             case "Print":
                 handlePrint(packet);
                 break;
@@ -253,6 +264,29 @@ public class APWebSocketClient implements WebSocket.Listener {
 
     private void handleRoomInfo(JsonObject packet) {
         LOGGER.info("Received RoomInfo");
+        if (!packet.has("players") || !packet.get("players").isJsonArray()) {
+            return;
+        }
+
+        JsonArray players = packet.getAsJsonArray("players");
+        for (JsonElement element : players) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            JsonObject player = element.getAsJsonObject();
+            if (player.has("slot")) {
+                int playerSlot = player.get("slot").getAsInt();
+                String name = player.has("alias")
+                        ? player.get("alias").getAsString()
+                        : player.has("name") ? player.get("name").getAsString() : "Player " + playerSlot;
+                playerNames.put(playerSlot, name);
+                if (player.has("game")) {
+                    playerGames.put(playerSlot, player.get("game").getAsString());
+                }
+            }
+        }
+
+        requestDataPackage();
     }
 
     private void handleConnected(JsonObject packet) {
@@ -260,6 +294,8 @@ public class APWebSocketClient implements WebSocket.Listener {
 
         if (packet.has("slot")) {
             slot = packet.get("slot").getAsInt();
+            playerNames.putIfAbsent(slot, slotName);
+            playerGames.putIfAbsent(slot, game);
         }
 
         if (packet.has("team")) {
@@ -276,6 +312,11 @@ public class APWebSocketClient implements WebSocket.Listener {
                 goalLevel = slotData.get("goal_level").getAsInt();
                 LOGGER.info("Goal level: {}", goalLevel);
                 vhManager.setGoalLevel(goalLevel);
+            }
+
+            if (slotData.has("goal_type")) {
+                goalType = slotData.get("goal_type").getAsString();
+                LOGGER.info("Goal type: {}", goalType);
             }
 
             int questChecks = slotData.has("quest_check_count")
@@ -315,10 +356,36 @@ public class APWebSocketClient implements WebSocket.Listener {
                 vhManager.setMaxLootScaling(slotData.get("max_loot_scaling").getAsInt());
             }
 
+            if (slotData.has("start_with_vault_kit")) {
+                vhManager.setStartWithVaultKit(slotData.get("start_with_vault_kit").getAsBoolean());
+            }
+
             if (server != null) {
                 vhManager.initializeWorldProgression(server);
+                for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                    vhManager.grantStartingKitIfEnabled(player);
+                }
             }
         }
+
+        if (packet.has("slot_info") && packet.get("slot_info").isJsonObject()) {
+            JsonObject slotInfo = packet.getAsJsonObject("slot_info");
+            for (Map.Entry<String, JsonElement> entry : slotInfo.entrySet()) {
+                if (!entry.getValue().isJsonObject()) {
+                    continue;
+                }
+                JsonObject info = entry.getValue().getAsJsonObject();
+                int playerSlot = parsePositiveInt(entry.getKey(), -1);
+                if (playerSlot >= 0 && info.has("game")) {
+                    playerGames.put(playerSlot, info.get("game").getAsString());
+                }
+                if (playerSlot >= 0 && info.has("name")) {
+                    playerNames.putIfAbsent(playerSlot, info.get("name").getAsString());
+                }
+            }
+            requestDataPackage();
+        }
+        requestDataPackage();
 
         // Send sync message to all players
         if (server != null) {
@@ -352,6 +419,7 @@ public class APWebSocketClient implements WebSocket.Listener {
 
             long itemId = itemData.get("item").getAsLong();
             long locationId = itemData.get("location").getAsLong();
+            int sendingPlayer = itemData.has("player") ? itemData.get("player").getAsInt() : -1;
 
             // Prevent duplicate processing
             String uniqueKey = itemId + ":" + locationId;
@@ -364,11 +432,11 @@ public class APWebSocketClient implements WebSocket.Listener {
             receivedData.markProcessed(uniqueKey);
 
             // Process item
-            processReceivedItem(itemId, locationId);
+            processReceivedItem(itemId, locationId, getPlayerName(sendingPlayer));
         }
     }
 
-    private void processReceivedItem(long itemId, long locationId) {
+    private void processReceivedItem(long itemId, long locationId, String sourcePlayerName) {
         // CRITICAL: Must run on server thread to send packets and interact with player
         if (server != null) {
             server.execute(() -> {
@@ -381,6 +449,7 @@ public class APWebSocketClient implements WebSocket.Listener {
                 LOGGER.info("Processing item {} from location {}", itemId, locationId);
 
                 if (vhManager.applyProgressionItem(itemId, player)) {
+                    sendFoundItemMessage(player, resolveItemNameForGame(itemId, game));
                     return;
                 }
 
@@ -388,17 +457,21 @@ public class APWebSocketClient implements WebSocket.Listener {
                 if (unlockName != null) {
                     if (unlockName.startsWith("vhskill:")) {
                         vhManager.unlockSkill(player, unlockName);
+                        sendFoundUnlockMessage(player, "skill", unlockName);
                     } else if (unlockName.startsWith("vhtalent:")) {
                         vhManager.unlockTalent(player, unlockName);
+                        sendFoundUnlockMessage(player, "talent", unlockName);
                     } else if (unlockName.startsWith("vhmod:")) {
                         vhManager.unlockMod(player, unlockName);
+                        sendFoundUnlockMessage(player, "mod", unlockName);
                     } else if (unlockName.startsWith("vhexpertise:")) {
                         vhManager.unlockExpertise(player, unlockName);
+                        sendFoundUnlockMessage(player, "expertise", unlockName);
                     }
                 }
                 // Filler items (33700-33799)
                 else if (itemId >= 33700 && itemId < 33800) {
-                    giveFillerItem(player, itemId);
+                    giveFillerItem(player, itemId, sourcePlayerName);
                 }
             });
         }
@@ -406,6 +479,66 @@ public class APWebSocketClient implements WebSocket.Listener {
 
     private void handleLocationInfo(JsonObject packet) {
         // Handle location scout info if needed
+    }
+
+    private void handleDataPackage(JsonObject packet) {
+        if (!packet.has("data") || !packet.get("data").isJsonObject()) {
+            return;
+        }
+        JsonObject data = packet.getAsJsonObject("data");
+        if (!data.has("games") || !data.get("games").isJsonObject()) {
+            return;
+        }
+
+        JsonObject games = data.getAsJsonObject("games");
+        for (Map.Entry<String, JsonElement> gameEntry : games.entrySet()) {
+            if (!gameEntry.getValue().isJsonObject()) {
+                continue;
+            }
+            JsonObject gameData = gameEntry.getValue().getAsJsonObject();
+            readNameToIdMap(gameData, "item_name_to_id", itemNamesByGame.computeIfAbsent(gameEntry.getKey(), k -> new HashMap<>()));
+            readNameToIdMap(gameData, "location_name_to_id", locationNamesByGame.computeIfAbsent(gameEntry.getKey(), k -> new HashMap<>()));
+        }
+        LOGGER.info("Loaded AP DataPackage for {} games", games.size());
+        if (!pendingItemMessages.isEmpty()) {
+            List<JsonObject> pending = new ArrayList<>(pendingItemMessages);
+            pendingItemMessages.clear();
+            pending.forEach(this::sendFormattedItemMessage);
+        }
+    }
+
+    private void requestDataPackage() {
+        if (!isConnected() || webSocket == null || requestedDataPackage || playerGames.isEmpty()) {
+            return;
+        }
+
+        JsonObject packet = new JsonObject();
+        packet.addProperty("cmd", "GetDataPackage");
+        JsonArray games = new JsonArray();
+        playerGames.values().stream().filter(Objects::nonNull).distinct().forEach(games::add);
+        if (games.size() == 0) {
+            games.add(game);
+        }
+        packet.add("games", games);
+
+        JsonArray wrapper = new JsonArray();
+        wrapper.add(packet);
+        webSocket.sendText(gson.toJson(wrapper), true);
+        requestedDataPackage = true;
+        LOGGER.info("Requested AP DataPackage for {} games", games.size());
+    }
+
+    private void readNameToIdMap(JsonObject gameData, String key, Map<Long, String> target) {
+        if (!gameData.has(key) || !gameData.get(key).isJsonObject()) {
+            return;
+        }
+
+        JsonObject nameToId = gameData.getAsJsonObject(key);
+        for (Map.Entry<String, JsonElement> entry : nameToId.entrySet()) {
+            if (entry.getValue().isJsonPrimitive() && entry.getValue().getAsJsonPrimitive().isNumber()) {
+                target.put(entry.getValue().getAsLong(), entry.getKey());
+            }
+        }
     }
 
     private void handlePrint(JsonObject packet) {
@@ -424,8 +557,87 @@ public class APWebSocketClient implements WebSocket.Listener {
     }
 
     private void handlePrintJSON(JsonObject packet) {
-        // Handle rich text messages
-        handlePrint(packet);
+        if ("ItemSend".equals(getString(packet, "type"))) {
+            sendFormattedItemMessage(packet);
+            return;
+        }
+
+        if (packet.has("data") && packet.get("data").isJsonArray()) {
+            StringBuilder message = new StringBuilder();
+            for (JsonElement element : packet.getAsJsonArray("data")) {
+                if (element.isJsonObject() && element.getAsJsonObject().has("text")) {
+                    message.append(element.getAsJsonObject().get("text").getAsString());
+                }
+            }
+            if (message.length() > 0) {
+                broadcastStatusToPlayers(message.toString(), ChatFormatting.AQUA);
+            }
+        }
+    }
+
+    private void sendFormattedItemMessage(JsonObject packet) {
+        String rawItemName = findPrintPartText(packet, "item_id", 0);
+        String rawSenderName = findPrintPartText(packet, "player_id", 0);
+        String rawReceiverName = findPrintPartText(packet, "player_id", 1);
+        String rawLocationName = findPrintPartText(packet, "location_id", 0);
+        int senderSlot = parsePositiveInt(rawSenderName, -1);
+        int receiverSlot = parsePositiveInt(rawReceiverName, packet.has("receiving") ? packet.get("receiving").getAsInt() : -1);
+        long itemId = parsePositiveLong(rawItemName, Long.MIN_VALUE);
+        String itemName = resolveItemName(rawItemName, receiverSlot);
+        String senderName = resolvePlayerName(rawSenderName);
+        String receiverName = resolvePlayerName(rawReceiverName);
+        String locationName = resolveLocationName(rawLocationName, senderSlot);
+
+        int receivingSlot = packet.has("receiving") ? packet.get("receiving").getAsInt() : -1;
+        boolean receivingHere = receivingSlot == slot || receiverSlot == slot || (receiverName != null && receiverName.equals(slotName));
+        boolean sentByHere = senderSlot == slot || (senderName != null && senderName.equals(slotName));
+        boolean selfFound = senderSlot > 0 && senderSlot == receiverSlot;
+        boolean found = packet.has("found") && packet.get("found").getAsBoolean();
+        if (receivingHere && isLocalVhapItem(itemId)) {
+            return;
+        }
+        if (isUnknownDataPackageName(itemName) && !isLocalVhapItem(itemId)) {
+            if (pendingItemMessages.size() < 100) {
+                pendingItemMessages.add(packet.deepCopy());
+            }
+            requestDataPackage();
+            return;
+        }
+
+        if (itemName == null || itemName.isBlank()) {
+            itemName = "Item";
+        }
+        if (senderName == null || senderName.isBlank()) {
+            senderName = "Player";
+        }
+        if (receiverName == null || receiverName.isBlank()) {
+            receiverName = receivingHere ? slotName : "Player";
+        }
+
+        MutableComponent message;
+        if (found || selfFound || (receivingHere && sentByHere)) {
+            message = colored("You", ChatFormatting.YELLOW)
+                    .append(colored(" found your ", ChatFormatting.WHITE))
+                    .append(quoted(itemName, ChatFormatting.AQUA, false));
+        } else if (receivingHere) {
+            message = new TextComponent("Received ")
+                    .append(quoted(itemName, ChatFormatting.AQUA, false))
+                    .append(new TextComponent(" from "))
+                    .append(colored(senderName, ChatFormatting.YELLOW));
+        } else {
+            message = colored(senderName, ChatFormatting.YELLOW)
+                    .append(colored(" sent ", ChatFormatting.WHITE))
+                    .append(colored(itemName, ChatFormatting.AQUA))
+                    .append(colored(" to ", ChatFormatting.WHITE))
+                    .append(colored(receiverName, ChatFormatting.YELLOW));
+            if (locationName != null && !locationName.isBlank()) {
+                message.append(colored(" (", ChatFormatting.WHITE))
+                        .append(colored(locationName, ChatFormatting.GREEN))
+                        .append(colored(")", ChatFormatting.WHITE));
+            }
+        }
+
+        broadcastComponentToPlayers(message);
     }
 
     private void handleConnectionRefused(JsonObject packet) {
@@ -472,10 +684,20 @@ public class APWebSocketClient implements WebSocket.Listener {
     }
 
     public void checkGoalReached(ServerPlayer player) {
+        if (!"level".equals(goalType)) {
+            return;
+        }
         int currentLevel = VHDataReader.getPlayerLevel(player);
 
         if (currentLevel >= goalLevel) {
             LOGGER.info("=== GOAL REACHED! Level {} ===", currentLevel);
+            sendGoalCompletion(player);
+        }
+    }
+
+    public void checkSpecialGoalReached(ServerPlayer player, String completedGoalType) {
+        if (goalType.equals(completedGoalType)) {
+            LOGGER.info("=== GOAL REACHED! {} ===", completedGoalType);
             sendGoalCompletion(player);
         }
     }
@@ -581,7 +803,7 @@ public class APWebSocketClient implements WebSocket.Listener {
         return index >= 0 && index < expertises.length ? expertises[index] : "unknown";
     }
 
-    private void giveFillerItem(ServerPlayer player, long itemId) {
+    private void giveFillerItem(ServerPlayer player, long itemId, String sourcePlayerName) {
         int index = (int)(itemId - 33700);
 
         // Map to actual VH items/commands [itemId, baseCount]
@@ -620,11 +842,9 @@ public class APWebSocketClient implements WebSocket.Listener {
                 {"minecraft:diamond", "5"},
                 // 16: Large Vault Bronze Stack (81)
                 {"the_vault:vault_bronze", "81"},
-                // 17: Magnetite Ingot (1)
-                {"the_vault:magnetite_ingot", "1"},
-                // 18: Vault Alloy (1)
+                // 17: Vault Alloy (1)
                 {"the_vault:vault_alloy", "1"},
-                // 19: Wild Focus (1)
+                // 18: Wild Focus (1)
                 {"the_vault:wild_focus", "1"},
                 // 20: Large Vault Plating Stack (12)
                 {"the_vault:vault_plating", "12"},
@@ -727,7 +947,7 @@ public class APWebSocketClient implements WebSocket.Listener {
                     itemId_str.startsWith("the_vault:boots")) {
 
                 String gearType = itemId_str.substring(itemId_str.indexOf(':') + 1);
-                giveVaultGear(player, gearType);
+                giveVaultGear(player, gearType, sourcePlayerName);
                 return;
             }
 
@@ -750,20 +970,14 @@ public class APWebSocketClient implements WebSocket.Listener {
             LOGGER.info("Gave {} x{} ({}x multiplier) to {}",
                     itemId_str, finalCount, multiplier, player.getName().getString());
 
-            String message = String.format("[AP] Received: %dx %s", finalCount,
-                    itemId_str.substring(itemId_str.indexOf(':') + 1));
-
-            player.sendMessage(
-                    new TextComponent(message).withStyle(ChatFormatting.GRAY),
-                    player.getUUID()
-            );
+            sendFoundItemMessage(player, finalCount + "x " + displayItemName(itemId_str));
         } else {
             LOGGER.warn("Invalid filler item index: {}", index);
         }
     }
 
 
-    private void giveVaultGear(ServerPlayer player, String gearType) {
+    private void giveVaultGear(ServerPlayer player, String gearType, String sourcePlayerName) {
         try {
             // Get player's vault level
             int playerLevel = VHDataReader.getPlayerLevel(player);
@@ -846,7 +1060,16 @@ public class APWebSocketClient implements WebSocket.Listener {
                 );
                 tickGearRoll.invoke(null, stack, player);
 
-                LOGGER.info("Created unidentified vault {} at level {} for {}", gearType, playerLevel, player.getName().getString());
+                Object allowedRarity = APGearRarityManager.getForcedRarity();
+                java.lang.reflect.Method setRarity = vaultGearDataClass.getMethod(
+                        "setRarity",
+                        Class.forName("iskallia.vault.gear.VaultGearRarity")
+                );
+                setRarity.invoke(gearData, allowedRarity);
+                write.invoke(gearData, stack);
+
+                LOGGER.info("Created unidentified vault {} at level {} rarity {} for {}",
+                        gearType, playerLevel, allowedRarity, player.getName().getString());
             } catch (Exception e) {
                 LOGGER.warn("Failed to initialize unidentified VH gear, using command fallback: {}", e.getMessage());
             }
@@ -859,12 +1082,7 @@ public class APWebSocketClient implements WebSocket.Listener {
                 player.drop(stack, false);
             }
 
-            player.sendMessage(
-                    new net.minecraft.network.chat.TextComponent(
-                            String.format("[AP] Received: Vault %s (Level %d)", gearType, playerLevel))
-                            .withStyle(net.minecraft.ChatFormatting.GRAY),
-                    player.getUUID()
-            );
+            sendFoundItemMessage(player, String.format("Vault %s (Level %d)", gearType, playerLevel));
 
         } catch (Exception e) {
             LOGGER.error("Failed to give vault gear: ", e);
@@ -880,6 +1098,219 @@ public class APWebSocketClient implements WebSocket.Listener {
         }
     }
     // ========== UTILITY ==========
+
+    private String getString(JsonObject object, String key) {
+        return object.has(key) && !object.get(key).isJsonNull() ? object.get(key).getAsString() : "";
+    }
+
+    private String findPrintPartText(JsonObject packet, String type, int occurrence) {
+        if (!packet.has("data") || !packet.get("data").isJsonArray()) {
+            return null;
+        }
+
+        int seen = 0;
+        for (JsonElement element : packet.getAsJsonArray("data")) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            JsonObject part = element.getAsJsonObject();
+            if (type.equals(getString(part, "type"))) {
+                if (seen == occurrence) {
+                    return getString(part, "text");
+                }
+                seen++;
+            }
+        }
+        return null;
+    }
+
+    private String getPlayerName(int playerSlot) {
+        if (playerSlot == slot) {
+            return slotName;
+        }
+        return playerNames.getOrDefault(playerSlot, playerSlot >= 0 ? "Player " + playerSlot : "Archipelago");
+    }
+
+    private String resolvePlayerName(String value) {
+        int playerSlot = parsePositiveInt(value, -1);
+        if (playerSlot >= 0) {
+            return getPlayerName(playerSlot);
+        }
+        return value;
+    }
+
+    private String resolveItemName(String value, int receiverSlot) {
+        long itemId = parsePositiveLong(value, Long.MIN_VALUE);
+        if (itemId == Long.MIN_VALUE) {
+            return value;
+        }
+
+        String gameName = playerGames.getOrDefault(receiverSlot, game);
+        String dataPackageName = resolveItemNameForGame(itemId, gameName);
+        if (dataPackageName != null) {
+            return dataPackageName;
+        }
+
+        return resolveItemNameForGame(itemId, game);
+    }
+
+    private String resolveItemNameForGame(long itemId, String gameName) {
+        if (gameName != null) {
+            Map<Long, String> dataPackageItems = itemNamesByGame.get(gameName);
+            if (dataPackageItems != null && dataPackageItems.containsKey(itemId)) {
+                return dataPackageItems.get(itemId);
+            }
+        }
+
+        String progressionName = getProgressionItemName(itemId);
+        if (progressionName != null) {
+            return progressionName;
+        }
+
+        String unlockName = VaultHuntersData.getLocationNameById(itemId);
+        if (unlockName != null) {
+            return displayUnlockName(unlockName);
+        }
+
+        if (itemId >= 33700L && itemId < 33800L) {
+            return "Filler";
+        }
+        if (itemId >= 44000L && itemId < 44500L) {
+            return "Chest Check " + (itemId - 44000L + 1L);
+        }
+        return "Unknown Item [" + itemId + "]";
+    }
+
+    private String resolveLocationName(String value, int senderSlot) {
+        long locationId = parsePositiveLong(value, Long.MIN_VALUE);
+        if (locationId == Long.MIN_VALUE) {
+            return value;
+        }
+
+        String gameName = playerGames.get(senderSlot);
+        if (gameName != null) {
+            Map<Long, String> dataPackageLocations = locationNamesByGame.get(gameName);
+            if (dataPackageLocations != null && dataPackageLocations.containsKey(locationId)) {
+                return dataPackageLocations.get(locationId);
+            }
+        }
+
+        Long localId = VaultHuntersData.getLocationId(value);
+        if (localId != null) {
+            return value;
+        }
+        return "Unknown Location [" + locationId + "]";
+    }
+
+    private String getProgressionItemName(long itemId) {
+        if (itemId == VaultHuntersData.ITEM_PROGRESSIVE_LEVEL_CAP) return "Progressive Level Cap";
+        if (itemId == VaultHuntersData.ITEM_PROGRESSIVE_XP_SCALING) return "Progressive XP Scaling";
+        if (itemId == VaultHuntersData.ITEM_PROGRESSIVE_LOOT_SCALING) return "Progressive Loot Scaling";
+        if (itemId == VaultHuntersData.ITEM_PROGRESSIVE_GEAR_RARITY) return "Progressive Gear Rarity";
+        return null;
+    }
+
+    private boolean isLocalVhapItem(long itemId) {
+        if (itemId == Long.MIN_VALUE) {
+            return false;
+        }
+        if (itemId >= 33700L && itemId < 33800L) {
+            return true;
+        }
+        if (getProgressionItemName(itemId) != null) {
+            return true;
+        }
+        return VaultHuntersData.getLocationNameById(itemId) != null;
+    }
+
+    private boolean isUnknownDataPackageName(String itemName) {
+        return itemName != null && itemName.startsWith("Unknown Item [");
+    }
+
+    private String displayUnlockName(String unlockName) {
+        int separator = unlockName.indexOf(':');
+        String name = separator >= 0 ? unlockName.substring(separator + 1) : unlockName;
+        return displayItemName("vhap:" + name);
+    }
+
+    private int parsePositiveInt(String value, int fallback) {
+        long parsed = parsePositiveLong(value, fallback);
+        if (parsed > Integer.MAX_VALUE) {
+            return fallback;
+        }
+        return (int) parsed;
+    }
+
+    private long parsePositiveLong(String value, long fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        try {
+            long parsed = Long.parseLong(value.trim());
+            return parsed >= 0 ? parsed : fallback;
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private String displayItemName(String itemId) {
+        String name = itemId.substring(itemId.indexOf(':') + 1).replace('_', ' ');
+        String[] words = name.split(" ");
+        StringBuilder display = new StringBuilder();
+        for (String word : words) {
+            if (word.isEmpty()) {
+                continue;
+            }
+            if (display.length() > 0) {
+                display.append(' ');
+            }
+            display.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
+        }
+        return display.toString();
+    }
+
+    private MutableComponent quoted(String text, ChatFormatting color, boolean bold) {
+        MutableComponent component = new TextComponent("\"" + text + "\"").withStyle(color);
+        if (bold) {
+            component.withStyle(ChatFormatting.BOLD);
+        }
+        return component;
+    }
+
+    private MutableComponent colored(String text, ChatFormatting color) {
+        return new TextComponent(text).withStyle(color);
+    }
+
+    private void sendFoundItemMessage(ServerPlayer player, String itemName) {
+        MutableComponent message = colored("You", ChatFormatting.YELLOW)
+                .append(colored(" found your ", ChatFormatting.WHITE))
+                .append(quoted(itemName, ChatFormatting.AQUA, false));
+        player.sendMessage(message, player.getUUID());
+    }
+
+    private void sendFoundUnlockMessage(ServerPlayer player, String type, String unlockName) {
+        MutableComponent message = colored("You", ChatFormatting.YELLOW)
+                .append(colored(" found your ", ChatFormatting.WHITE))
+                .append(colored(capitalize(type), ChatFormatting.AQUA))
+                .append(colored(": ", ChatFormatting.WHITE))
+                .append(colored(displayUnlockName(unlockName), ChatFormatting.AQUA));
+        player.sendMessage(message, player.getUUID());
+    }
+
+    private String capitalize(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return Character.toUpperCase(value.charAt(0)) + value.substring(1);
+    }
+
+    private void broadcastComponentToPlayers(MutableComponent message) {
+        if (server == null) return;
+
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            player.sendMessage(message, player.getUUID());
+        }
+    }
 
     private ServerPlayer getCurrentPlayer() {
         if (server == null) return null;

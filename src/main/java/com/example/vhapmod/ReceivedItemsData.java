@@ -59,6 +59,17 @@ public class ReceivedItemsData extends SavedData {
         return processedItems.size();
     }
 
+    public int getProcessedItemCount(long itemId) {
+        String prefix = itemId + ":";
+        int count = 0;
+        for (String processedItem : processedItems) {
+            if (processedItem.startsWith(prefix)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     public static ReceivedItemsData get(MinecraftServer server) {
         DimensionDataStorage storage = server.overworld().getDataStorage();
         return storage.computeIfAbsent(
