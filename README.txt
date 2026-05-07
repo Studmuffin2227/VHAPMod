@@ -3,7 +3,7 @@ This Mod is a Integration of Archipelago for Iskallia's Minecraft Modpack, Vault
 Setup:
 Download the Mod from here on github.
 Download the APWorld from here on github.
-(Recommended) Make a new instance of Vault Hunters on Curseforge/Modrinth or whatever other mod manager you use.
+(Recommended) Make a new instance of "Vault Hunters Official Modpack (3rd Ed)" on Curseforge/Modrinth or whatever other mod manager you use.
 Place the vhapmod.jar into the mods folder of said instance.
 Load a New Minecraft World, and use /apconnect [address] [port] [slotName] to connect to the AP server.
 Play
