@@ -166,7 +166,8 @@ public class APSkillLockManager {
 
         // Persist to disk
         APUnlockData unlockData = APUnlockData.get(player.getServer());
-        unlockData.addSkill(uuid, normalizedName);
+        unlockData.addGlobalSkill(normalizedName);
+        applyGlobalUnlockToOnlinePlayers(player, normalizedName, unlockedSkills);
 
         LOGGER.info("=== UNLOCKING SKILL ===");
         LOGGER.info("Input: '{}' for player UUID={}", skillName, uuid);
@@ -174,7 +175,7 @@ public class APSkillLockManager {
         LOGGER.info("All unlocked skills for player: {}", playerSkills);
         LOGGER.info("========================");
 
-        syncToClient(player);
+        syncAllOnlinePlayers(player);
     }
 
     /**
@@ -189,7 +190,8 @@ public class APSkillLockManager {
 
         // Persist to disk
         APUnlockData unlockData = APUnlockData.get(player.getServer());
-        unlockData.addTalent(uuid, normalizedName);
+        unlockData.addGlobalTalent(normalizedName);
+        applyGlobalUnlockToOnlinePlayers(player, normalizedName, unlockedTalents);
 
         LOGGER.info("=== UNLOCKING TALENT ===");
         LOGGER.info("Input: '{}' for player UUID={}", talentName, uuid);
@@ -197,7 +199,7 @@ public class APSkillLockManager {
         LOGGER.info("All unlocked talents for player: {}", playerTalents);
         LOGGER.info("========================");
 
-        syncToClient(player);
+        syncAllOnlinePlayers(player);
     }
 
     /**
@@ -212,14 +214,15 @@ public class APSkillLockManager {
 
         // Persist to disk
         APUnlockData unlockData = APUnlockData.get(player.getServer());
-        unlockData.addExpertise(uuid, normalizedName);
+        unlockData.addGlobalExpertise(normalizedName);
+        applyGlobalUnlockToOnlinePlayers(player, normalizedName, unlockedExpertises);
 
         LOGGER.info("=== UNLOCKING EXPERTISE ===");
         LOGGER.info("Input: '{}'", expertiseName);
         LOGGER.info("Normalized: '{}'", normalizedName);
         LOGGER.info("========================");
 
-        syncToClient(player);
+        syncAllOnlinePlayers(player);
     }
 
     /**
@@ -234,10 +237,23 @@ public class APSkillLockManager {
 
         // Persist to disk
         APUnlockData unlockData = APUnlockData.get(player.getServer());
-        unlockData.addMod(uuid, normalizedName);
+        unlockData.addGlobalMod(normalizedName);
+        applyGlobalUnlockToOnlinePlayers(player, normalizedName, unlockedMods);
 
         LOGGER.info("Unlocked mod for {}: {}", player.getName().getString(), modName);
-        syncToClient(player);
+        syncAllOnlinePlayers(player);
+    }
+
+    private static void applyGlobalUnlockToOnlinePlayers(ServerPlayer source, String unlock, Map<UUID, Set<String>> unlockMap) {
+        for (ServerPlayer player : source.getServer().getPlayerList().getPlayers()) {
+            unlockMap.computeIfAbsent(player.getUUID(), k -> new HashSet<>()).add(unlock);
+        }
+    }
+
+    private static void syncAllOnlinePlayers(ServerPlayer source) {
+        for (ServerPlayer player : source.getServer().getPlayerList().getPlayers()) {
+            syncToClient(player);
+        }
     }
 
     /**

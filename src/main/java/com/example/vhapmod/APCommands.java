@@ -8,6 +8,7 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.TextComponent;
+import net.minecraft.server.level.ServerPlayer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -92,6 +93,10 @@ public class APCommands {
         if (client.isConnected()) {
             ctx.getSource().sendFailure(new TextComponent("Already connected! Use /apdisconnect first.").withStyle(ChatFormatting.RED));
             return 0;
+        }
+
+        if (ctx.getSource().getEntity() instanceof ServerPlayer player) {
+            client.setTargetPlayer(player);
         }
         
         ctx.getSource().sendSuccess(new TextComponent(

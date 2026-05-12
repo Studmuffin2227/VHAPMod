@@ -5,6 +5,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.TextComponent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
@@ -281,17 +282,15 @@ public class VaultHuntersManager {
     }
 
     public long getNextChestCheckId(ServerPlayer player) {
-        UUID playerId = player.getUUID();
         APProgressData progressData = APProgressData.get(player.getServer());
-        long collectedCount = progressData.getChestCheckCount(playerId);
+        long collectedCount = progressData.getSharedChestCheckCount();
 
-        // Use the configurable value
         if (collectedCount >= totalChestChecks) {
             return 0;
         }
 
-        long nextCheckId = CHEST_CHECK_BASE_ID + collectedCount + 1;
-        progressData.setChestCheckCount(playerId, collectedCount + 1);
+        long nextCheckId = CHEST_CHECK_BASE_ID + collectedCount;
+        progressData.setSharedChestCheckCount(collectedCount + 1);
 
         return nextCheckId;
     }
@@ -662,6 +661,76 @@ public class VaultHuntersManager {
         LOGGER.info("Unlocked skill {} for player {}", skillName, player.getName().getString());
     }
 
+    public void buySkillRankOne(ServerPlayer player, String skillName) {
+        String targetKey = APSkillLockManager.canonicalSkillKey(skillName);
+        try {
+            Object data = VHDataReader.getWorldData(playerAbilitiesDataClass, player.getLevel());
+            Method getAbilities = data.getClass().getMethod("getAbilities", player.getUUID().getClass());
+            Object abilityTree = getAbilities.invoke(data, player.getUUID());
+            if (abilityTree == null) {
+                return;
+            }
+
+            Class<?> skillClass = Class.forName("iskallia.vault.skill.base.Skill");
+            Method iterate = abilityTree.getClass().getMethod("iterate", Class.class, java.util.function.Consumer.class);
+            final Object[] found = new Object[1];
+            iterate.invoke(abilityTree, skillClass, (java.util.function.Consumer<Object>) skill -> {
+                try {
+                    Method getId = skill.getClass().getMethod("getId");
+                    String id = APSkillLockManager.canonicalSkillKey((String) getId.invoke(skill));
+                    if (targetKey.equals(id)) {
+                        found[0] = skill;
+                    }
+                } catch (Exception ignored) {
+                }
+            });
+
+            if (found[0] == null) {
+                LOGGER.warn("Could not find VH skill {} to buy rank 1", skillName);
+                return;
+            }
+
+            if (setSkillTier(found[0], 1)) {
+                Method setDirty = data.getClass().getMethod("setDirty");
+                setDirty.invoke(data);
+                APSkillLockManager.syncToClient(player);
+                LOGGER.info("Bought rank 1 of {} for {}", skillName, player.getName().getString());
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Failed to buy rank 1 for {}: {}", skillName, e.getMessage());
+        }
+    }
+
+    private boolean setSkillTier(Object skill, int tier) {
+        boolean changed = false;
+        try {
+            Field tierField = findField(skill.getClass(), "tier");
+            if (tierField != null) {
+                tierField.setAccessible(true);
+                if (tierField.getInt(skill) < tier) {
+                    tierField.setInt(skill, tier);
+                    changed = true;
+                }
+            }
+            return changed;
+        } catch (Exception e) {
+            LOGGER.warn("Failed to set skill tier: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    private Field findField(Class<?> type, String fieldName) {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                return current.getDeclaredField(fieldName);
+            } catch (NoSuchFieldException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        return null;
+    }
+
     public void unlockTalent(ServerPlayer player, String talentName) {
         LOGGER.info("=== unlockTalent() CALLED ===");
         LOGGER.info("Player: {}", player.getName().getString());
@@ -704,23 +773,18 @@ public class VaultHuntersManager {
         return count;
     }
     public long getNextChestCheckIdForItem(ServerPlayer player) {
-        UUID playerId = player.getUUID();
         APProgressData progressData = APProgressData.get(player.getServer());
 
-        // Get the current count for this player
-        long currentCount = progressData.getChestCheckCount(playerId);
+        long currentCount = progressData.getSharedChestCheckCount();
 
         if (currentCount >= totalChestChecks) {
-            LOGGER.info("Player {} has reached max chest checks ({})",
-                    player.getName().getString(), totalChestChecks);
+            LOGGER.info("Server has reached max chest checks ({})", totalChestChecks);
             return 0L;
         }
 
-        // Calculate location ID (50000 + count)
         long locationId = CHEST_CHECK_BASE_ID + currentCount;
 
-        // Increment the counter for next time
-        progressData.setChestCheckCount(playerId, currentCount + 1);
+        progressData.setSharedChestCheckCount(currentCount + 1);
 
         LOGGER.info("Generated chest check item for player {}: location ID {} (check #{})",
                 player.getName().getString(), locationId, currentCount + 1);

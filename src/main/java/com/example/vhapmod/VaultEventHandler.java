@@ -52,6 +52,11 @@ public class VaultEventHandler {
                 manager.grantStartingKitIfEnabled(player);
             }
 
+            APWebSocketClient apClient = VaultHuntersAPMod.getAPClient();
+            if (apClient != null) {
+                apClient.flushPendingReceivedItems();
+            }
+
             // Sync Client To Server
             syncToClient(player);
         }
@@ -64,12 +69,6 @@ public class VaultEventHandler {
     public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             LOGGER.info("Player {} logged out", player.getName().getString());
-
-            // Disconnect from AP
-            APWebSocketClient apClient = VaultHuntersAPMod.getAPClient();
-            if (apClient != null) {
-                apClient.disconnect();
-            }
 
             VHProgressionTracker.onPlayerLogout(player);
         }

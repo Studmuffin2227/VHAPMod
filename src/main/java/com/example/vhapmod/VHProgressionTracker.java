@@ -175,6 +175,13 @@ public class VHProgressionTracker {
             return;
         }
 
+        APWebSocketClient client = VaultHuntersAPMod.getAPClient();
+        if (client != null && !client.shouldCountQuestChecksFor(player)) {
+            LOGGER.info("Ignoring quest completion for {}; AP quest checks are assigned to another player",
+                    player.getName().getString());
+            return;
+        }
+
         APProgressData progressData = APProgressData.get(player.getServer());
         if (progressData.getCompletedQuestCount() >= manager.getTotalQuestChecks()) {
             LOGGER.info("Ignoring quest completion for {}; configured quest checks are exhausted ({})",

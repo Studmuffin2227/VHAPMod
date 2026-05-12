@@ -26,7 +26,7 @@ side="BOTH"
 [[dependencies.apvaulthuntersmod]]
 modId="the_vault"
 mandatory=true
-versionRange="*"
+versionRange="[1.18.2-3.21.5,)"
 ordering="AFTER"
 side="BOTH"
 

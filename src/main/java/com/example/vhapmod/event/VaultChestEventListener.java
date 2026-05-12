@@ -1,6 +1,7 @@
 package com.example.vhapmod.event;
 
 import com.example.vhapmod.APGearRarityManager;
+import com.example.vhapmod.APWebSocketClient;
 import com.example.vhapmod.VHDataReader;
 import com.example.vhapmod.VaultHuntersAPMod;
 import com.example.vhapmod.VaultHuntersManager;
@@ -99,7 +100,12 @@ public class VaultChestEventListener {
         LOGGER.info("Player {} found chest check #{} at pos {} ({}% chance)",
                 serverPlayer.getName().getString(), checkNumber, chestPos, (checkChance * 100));
 
-        ItemStack checkItem = ModItems.getCheckItemStack(locationId);
+        APWebSocketClient client = VaultHuntersAPMod.getAPClient();
+        String rewardName = client != null ? client.getScoutedRewardName(locationId) : null;
+        ItemStack checkItem = ModItems.getCheckItemStack(locationId, rewardName);
+        if (client != null) {
+            client.scoutLocation(serverPlayer, locationId);
+        }
         ItemStack inventoryCopy = checkItem.copy();
         boolean added = serverPlayer.getInventory().add(inventoryCopy);
 

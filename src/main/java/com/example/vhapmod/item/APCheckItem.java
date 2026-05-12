@@ -129,11 +129,6 @@ public class APCheckItem extends Item {
                     1.5F
             );
 
-            player.sendMessage(
-                    new TextComponent("Sent AP Chest Check #" + checkNumber + " (ID " + locationId + ")")
-                            .withStyle(ChatFormatting.GOLD),
-                    player.getUUID()
-            );
             return true;
         } else {
             player.sendMessage(
@@ -172,6 +167,13 @@ public class APCheckItem extends Item {
         tooltip.add(new TextComponent(""));
         tooltip.add(new TextComponent("Check #" + checkNumber)
                 .withStyle(ChatFormatting.YELLOW));
+        if (stack.hasTag() && stack.getTag().contains("RewardName")) {
+            tooltip.add(new TextComponent("Contains: " + stack.getTag().getString("RewardName"))
+                    .withStyle(ChatFormatting.AQUA));
+        } else {
+            tooltip.add(new TextComponent("Contains: unknown")
+                    .withStyle(ChatFormatting.DARK_GRAY));
+        }
         tooltip.add(new TextComponent(""));
         tooltip.add(new TextComponent("Right-click to claim")
                 .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));

@@ -32,4 +32,12 @@ public class ModItems {
 
         return stack;
     }
+
+    public static ItemStack getCheckItemStack(long locationId, String rewardName) {
+        ItemStack stack = getCheckItemStack(locationId);
+        if (rewardName != null && !rewardName.isBlank()) {
+            stack.getOrCreateTag().putString("RewardName", rewardName);
+        }
+        return stack;
+    }
 }

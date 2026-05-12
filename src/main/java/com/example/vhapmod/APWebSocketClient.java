@@ -4,9 +4,11 @@ import com.google.gson.*;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.TextComponent;
+import net.minecraft.network.chat.TextColor;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.IForgeRegistry;
 import org.apache.logging.log4j.LogManager;
@@ -28,9 +30,8 @@ import java.util.concurrent.TimeUnit;
 public class APWebSocketClient implements WebSocket.Listener {
 
     private static final Logger LOGGER = LogManager.getLogger();
+    private static final int PROGRESSION_RGB = 0xAE98EE;
     private final Gson gson = new Gson();
-    private final Random random = new Random();
-
     private WebSocket webSocket;
     private VaultHuntersManager vhManager;
     private net.minecraft.server.MinecraftServer server;
@@ -42,6 +43,8 @@ public class APWebSocketClient implements WebSocket.Listener {
     private int team = 0;
     private int slot = 0;
     private boolean connected = false;
+    private UUID targetPlayerId;
+    private boolean skillChecksEnabled = false;
 
     // Game state
     private Set<Long> checkedLocations = new HashSet<>();
@@ -52,8 +55,70 @@ public class APWebSocketClient implements WebSocket.Listener {
     private final Map<Integer, String> playerGames = new HashMap<>();
     private final Map<String, Map<Long, String>> itemNamesByGame = new HashMap<>();
     private final Map<String, Map<Long, String>> locationNamesByGame = new HashMap<>();
+    private final Map<Long, String> scoutedRewardsByLocation = new HashMap<>();
+    private final Map<Long, UUID> scoutTargetsByLocation = new HashMap<>();
     private final List<JsonObject> pendingItemMessages = new ArrayList<>();
     private boolean requestedDataPackage = false;
+    private static final String[] FILLER_REWARD_NAMES = {
+            "Cooked Vault Steak",
+            "Chromatic Iron Ingot",
+            "Shulker Box",
+            "Bottle O' Enchanting",
+            "Emerald",
+            "Ender Pearl",
+            "Backpack",
+            "Pickup Backpack",
+            "Void Backpack",
+            "Bounty Pearl",
+            "Chromatic Iron Ingot Bundle",
+            "Gemstone",
+            "Chromatic Steel Ingot",
+            "Vault Gold",
+            "Vault Plating",
+            "Diamond",
+            "Vault Bronze Stack",
+            "Vault Alloy",
+            "Wild Focus",
+            "Vault Plating Bundle",
+            "Vault Bronze Bundle",
+            "Vault Scrap",
+            "Vault Gold Cache",
+            "Vault Diamond",
+            "Hamburger",
+            "Seal of the Scout",
+            "Silver Scrap",
+            "Soul Shard",
+            "Vault Helmet",
+            "Vault Chestplate",
+            "Vault Leggings",
+            "Vault Boots",
+            "Mod Box",
+            "Diamond Cache",
+            "Seal of the Sage",
+            "Phoenix Capstone",
+            "Catalyst Fragment",
+            "Inscription Piece",
+            "Unidentified Artifact",
+            "Vault Gold Pouch",
+            "Vault Trinket",
+            "Vault Diamond Cache",
+            "Vault Gold Hoard",
+            "POG",
+            "Netherite Ingot",
+            "Wardrobe",
+            "Vault Bronze Hoard",
+            "Echo Gem",
+            "Mod Box Bundle",
+            "Sour Orange",
+            "Bamboo",
+            "Unidentified Trinket",
+            "Vault Gold Crate",
+            "Neuralizer",
+            "Perfect Echo Gem",
+            "Lost Bounty",
+            "Ember",
+            "Omega POG"
+    };
 
     public APWebSocketClient(VaultHuntersManager manager) {
         this.vhManager = manager;
@@ -61,6 +126,18 @@ public class APWebSocketClient implements WebSocket.Listener {
 
     public void setServer(net.minecraft.server.MinecraftServer server) {
         this.server = server;
+    }
+
+    public void setTargetPlayer(ServerPlayer player) {
+        this.targetPlayerId = player.getUUID();
+        LOGGER.info("AP rewards will target Minecraft player {}", player.getGameProfile().getName());
+    }
+
+    public boolean shouldCountQuestChecksFor(ServerPlayer player) {
+        if (targetPlayerId != null) {
+            return player.getUUID().equals(targetPlayerId);
+        }
+        return true;
     }
 
     // ========== CONNECTION ==========
@@ -348,6 +425,11 @@ public class APWebSocketClient implements WebSocket.Listener {
                 APSkillLockManager.setLockSpecializations(lockSpecializations);
             }
 
+            if (slotData.has("skill_checks")) {
+                skillChecksEnabled = slotData.get("skill_checks").getAsBoolean();
+                LOGGER.info("Skill checks: {}", skillChecksEnabled ? "enabled" : "disabled; received skill unlocks will be bought at rank 1");
+            }
+
             if (slotData.has("max_xp_scaling")) {
                 vhManager.setMaxXpScaling(slotData.get("max_xp_scaling").getAsInt());
             }
@@ -412,7 +494,8 @@ public class APWebSocketClient implements WebSocket.Listener {
         ReceivedItemsData receivedData = ReceivedItemsData.get(server);
 
         JsonArray items = packet.getAsJsonArray("items");
-        LOGGER.info("=== Receiving {} items ===", items.size());
+        int firstItemIndex = packet.has("index") ? packet.get("index").getAsInt() : -1;
+        LOGGER.info("=== Receiving {} items from AP index {} ===", items.size(), firstItemIndex);
 
         for (int i = 0; i < items.size(); i++) {
             JsonObject itemData = items.get(i).getAsJsonObject();
@@ -420,36 +503,60 @@ public class APWebSocketClient implements WebSocket.Listener {
             long itemId = itemData.get("item").getAsLong();
             long locationId = itemData.get("location").getAsLong();
             int sendingPlayer = itemData.has("player") ? itemData.get("player").getAsInt() : -1;
+            int itemFlags = itemData.has("flags") ? itemData.get("flags").getAsInt() : 0;
 
             // Prevent duplicate processing
-            String uniqueKey = itemId + ":" + locationId;
+            String legacyKey = itemId + ":" + locationId;
+            String uniqueKey = firstItemIndex >= 0 ? "index:" + (firstItemIndex + i) : legacyKey;
             if (receivedData.hasProcessed(uniqueKey)) {
-                LOGGER.debug("Already processed: {}", uniqueKey);
+                LOGGER.info("Skipping already processed AP item {} from location {} using key {}",
+                        itemId, locationId, uniqueKey);
                 continue;
             }
 
-            // Mark as processed and save
-            receivedData.markProcessed(uniqueKey);
-
             // Process item
-            processReceivedItem(itemId, locationId, getPlayerName(sendingPlayer));
+            processReceivedItem(uniqueKey, itemId, locationId, sendingPlayer, itemFlags);
         }
     }
 
-    private void processReceivedItem(long itemId, long locationId, String sourcePlayerName) {
+    public void flushPendingReceivedItems() {
+        if (server == null) {
+            return;
+        }
+
+        server.execute(() -> {
+            ReceivedItemsData receivedData = ReceivedItemsData.get(server);
+            for (ReceivedItemsData.PendingItem item : receivedData.getPendingItems()) {
+                if (receivedData.hasProcessed(item.uniqueKey)) {
+                    receivedData.removePending(item.uniqueKey);
+                    continue;
+                }
+                processReceivedItem(item.uniqueKey, item.itemId, item.locationId, item.sendingPlayer, item.flags);
+            }
+        });
+    }
+
+    private void processReceivedItem(String uniqueKey, long itemId, long locationId, int sendingPlayer, int itemFlags) {
         // CRITICAL: Must run on server thread to send packets and interact with player
         if (server != null) {
             server.execute(() -> {
+                ReceivedItemsData receivedData = ReceivedItemsData.get(server);
+                if (receivedData.hasProcessed(uniqueKey)) {
+                    return;
+                }
+
                 ServerPlayer player = getCurrentPlayer();
                 if (player == null) {
-                    LOGGER.warn("No player available to receive item");
+                    receivedData.addPending(uniqueKey, itemId, locationId, sendingPlayer, itemFlags);
+                    LOGGER.warn("No player available to receive item {}; queued for next login", uniqueKey);
                     return;
                 }
 
                 LOGGER.info("Processing item {} from location {}", itemId, locationId);
 
                 if (vhManager.applyProgressionItem(itemId, player)) {
-                    sendFoundItemMessage(player, resolveItemNameForGame(itemId, game));
+                    sendReceivedItemMessage(player, locationId, sendingPlayer, resolveItemNameForGame(itemId, game), getItemColor(itemFlags, itemId));
+                    receivedData.markProcessed(uniqueKey);
                     return;
                 }
 
@@ -457,28 +564,117 @@ public class APWebSocketClient implements WebSocket.Listener {
                 if (unlockName != null) {
                     if (unlockName.startsWith("vhskill:")) {
                         vhManager.unlockSkill(player, unlockName);
-                        sendFoundUnlockMessage(player, "skill", unlockName);
+                        if (!skillChecksEnabled) {
+                            vhManager.buySkillRankOne(player, unlockName);
+                        }
+                        sendReceivedUnlockMessage(locationId, sendingPlayer, "skill", unlockName);
                     } else if (unlockName.startsWith("vhtalent:")) {
                         vhManager.unlockTalent(player, unlockName);
-                        sendFoundUnlockMessage(player, "talent", unlockName);
+                        sendReceivedUnlockMessage(locationId, sendingPlayer, "talent", unlockName);
                     } else if (unlockName.startsWith("vhmod:")) {
-                        vhManager.unlockMod(player, unlockName);
-                        sendFoundUnlockMessage(player, "mod", unlockName);
+                        unlockModWithPrerequisites(player, unlockName);
+                        sendReceivedUnlockMessage(locationId, sendingPlayer, "mod", unlockName);
                     } else if (unlockName.startsWith("vhexpertise:")) {
                         vhManager.unlockExpertise(player, unlockName);
-                        sendFoundUnlockMessage(player, "expertise", unlockName);
+                        sendReceivedUnlockMessage(locationId, sendingPlayer, "expertise", unlockName);
                     }
                 }
                 // Filler items (33700-33799)
                 else if (itemId >= 33700 && itemId < 33800) {
-                    giveFillerItem(player, itemId, sourcePlayerName);
+                    giveFillerItem(player, itemId, getPlayerName(sendingPlayer), locationId, sendingPlayer);
                 }
+                receivedData.markProcessed(uniqueKey);
             });
         }
     }
 
     private void handleLocationInfo(JsonObject packet) {
-        // Handle location scout info if needed
+        if (!packet.has("locations") || !packet.get("locations").isJsonArray()) {
+            return;
+        }
+
+        for (JsonElement element : packet.getAsJsonArray("locations")) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+
+            JsonObject info = element.getAsJsonObject();
+            long locationId = info.has("location") ? info.get("location").getAsLong() : Long.MIN_VALUE;
+            long itemId = info.has("item") ? info.get("item").getAsLong() : Long.MIN_VALUE;
+            int receiverSlot = info.has("player") ? info.get("player").getAsInt() : slot;
+
+            if (locationId == Long.MIN_VALUE || itemId == Long.MIN_VALUE) {
+                continue;
+            }
+
+            String itemName = resolveItemNameForGame(itemId, playerGames.getOrDefault(receiverSlot, game));
+            scoutedRewardsByLocation.put(locationId, itemName);
+            updateCheckItemRewardName(locationId, itemName);
+            LOGGER.info("Scouted AP location {} -> {}", locationId, itemName);
+        }
+    }
+
+    private void unlockModWithPrerequisites(ServerPlayer player, String modName) {
+        String actualModName = "vhmod:automatic_genius".equals(modName)
+                ? chooseAutomaticGeniusReplacement(player)
+                : modName;
+
+        for (String prerequisite : getModPrerequisites(player, actualModName)) {
+            vhManager.unlockMod(player, prerequisite);
+        }
+        vhManager.unlockMod(player, actualModName);
+    }
+
+    private String chooseAutomaticGeniusReplacement(ServerPlayer player) {
+        List<String> candidates = new ArrayList<>(Arrays.asList(
+                "vhmod:colossal_chests", "vhmod:simple_storage_network", "vhmod:drawers",
+                "vhmod:mekanism_qio", "vhmod:refined_storage", "vhmod:applied_energistics",
+                "vhmod:stack_upgrading", "vhmod:auto_refill", "vhmod:auto_feeding",
+                "vhmod:double_pouches", "vhmod:belts", "vhmod:backpacks", "vhmod:big_backpacks",
+                "vhmod:soul_harvester", "vhmod:junk_management", "vhmod:iron_generators",
+                "vhmod:powah", "vhmod:flux_networks", "vhmod:thermal_dynamos",
+                "vhmod:mekanism_generators", "vhmod:botania_flux_field", "vhmod:building_gadgets",
+                "vhmod:weirding_gadgets", "vhmod:mining_gadgets", "vhmod:laser_bridges",
+                "vhmod:digital_miner", "vhmod:entangled", "vhmod:botania", "vhmod:mekanism",
+                "vhmod:thermal_expansion", "vhmod:create", "vhmod:waystones", "vhmod:torchmaster",
+                "vhmod:trashcans", "vhmod:elevators", "vhmod:altar_automation", "vhmod:xnet",
+                "vhmod:modular_routers", "vhmod:pipez", "vhmod:iron_furnaces", "vhmod:vault_filters",
+                "vhmod:dark_utilities", "vhmod:easy_villagers", "vhmod:easy_piglins",
+                "vhmod:botany_pots", "vhmod:snad", "vhmod:cagerium", "vhmod:mob_spawners",
+                "vhmod:phytogenic_insulator", "vhmod:potions", "vhmod:mixtures", "vhmod:brews",
+                "vhmod:vault_compass", "vhmod:map_markers", "vhmod:vault_map", "vhmod:vault_decks"
+        ));
+        Collections.shuffle(candidates);
+        Set<String> unlocked = APSkillLockManager.getUnlockedMods(player);
+        for (String candidate : candidates) {
+            if (!unlocked.contains(APSkillLockManager.canonicalModKey(candidate))) {
+                LOGGER.info("Automatic Genius replaced with missing mod {}", candidate);
+                return candidate;
+            }
+        }
+        return "vhmod:automatic_genius";
+    }
+
+    private List<String> getModPrerequisites(ServerPlayer player, String modName) {
+        return switch (modName) {
+            case "vhmod:mekanism_qio", "vhmod:mekanism_generators", "vhmod:digital_miner" ->
+                    List.of("vhmod:mekanism");
+            case "vhmod:belts" -> List.of("vhmod:double_pouches");
+            case "vhmod:backpacks" -> List.of("vhmod:double_pouches", "vhmod:belts");
+            case "vhmod:big_backpacks" -> List.of("vhmod:double_pouches", "vhmod:belts", "vhmod:backpacks");
+            case "vhmod:thermal_dynamos", "vhmod:phytogenic_insulator" -> List.of("vhmod:thermal_expansion");
+            case "vhmod:botania_flux_field" -> List.of("vhmod:botania");
+            case "vhmod:altar_automation" -> hasMod(player, "vhmod:refined_storage")
+                    ? List.of("vhmod:refined_storage")
+                    : List.of("vhmod:applied_energistics");
+            case "vhmod:mixtures" -> List.of("vhmod:potions");
+            case "vhmod:brews" -> List.of("vhmod:potions", "vhmod:mixtures");
+            default -> List.of();
+        };
+    }
+
+    private boolean hasMod(ServerPlayer player, String modName) {
+        return player != null && APSkillLockManager.getUnlockedMods(player).contains(APSkillLockManager.canonicalModKey(modName));
     }
 
     private void handleDataPackage(JsonObject packet) {
@@ -545,14 +741,7 @@ public class APWebSocketClient implements WebSocket.Listener {
         if (packet.has("text")) {
             String message = packet.get("text").getAsString();
             LOGGER.info("[AP] {}", message);
-
-            ServerPlayer player = getCurrentPlayer();
-            if (player != null) {
-                player.sendMessage(
-                        new TextComponent("[AP] " + message).withStyle(ChatFormatting.AQUA),
-                        player.getUUID()
-                );
-            }
+            broadcastStatusToPlayers("[AP] " + message, ChatFormatting.AQUA);
         }
     }
 
@@ -563,32 +752,67 @@ public class APWebSocketClient implements WebSocket.Listener {
         }
 
         if (packet.has("data") && packet.get("data").isJsonArray()) {
-            StringBuilder message = new StringBuilder();
-            for (JsonElement element : packet.getAsJsonArray("data")) {
-                if (element.isJsonObject() && element.getAsJsonObject().has("text")) {
-                    message.append(element.getAsJsonObject().get("text").getAsString());
-                }
-            }
-            if (message.length() > 0) {
-                broadcastStatusToPlayers(message.toString(), ChatFormatting.AQUA);
+            MutableComponent message = formatPrintJsonMessage(packet);
+            if (!message.getString().isBlank()) {
+                broadcastComponentToPlayers(colored("[AP] ", ChatFormatting.AQUA).append(message));
             }
         }
     }
 
+    private MutableComponent formatPrintJsonMessage(JsonObject packet) {
+        MutableComponent message = new TextComponent("");
+        for (JsonElement element : packet.getAsJsonArray("data")) {
+            if (element.isJsonObject()) {
+                message.append(formatPrintJsonPart(element.getAsJsonObject()));
+            }
+        }
+        return message;
+    }
+
+    private MutableComponent formatPrintJsonPart(JsonObject part) {
+        String text = getString(part, "text");
+        String type = getString(part, "type");
+        if (type == null || type.isBlank()) {
+            return colored(text, ChatFormatting.AQUA);
+        }
+
+        switch (type) {
+            case "player_id":
+                return colored(resolvePlayerName(text), ChatFormatting.YELLOW);
+            case "item_id": {
+                int receiverSlot = getInt(part, "player", slot);
+                long itemId = parsePositiveLong(text, Long.MIN_VALUE);
+                return colored(resolveItemName(text, receiverSlot), getItemColor(part, itemId));
+            }
+            case "location_id": {
+                int senderSlot = getInt(part, "player", slot);
+                return colored(resolveLocationName(text, senderSlot), ChatFormatting.GREEN);
+            }
+            default:
+                return colored(text, ChatFormatting.AQUA);
+        }
+    }
+
     private void sendFormattedItemMessage(JsonObject packet) {
-        String rawItemName = findPrintPartText(packet, "item_id", 0);
+        JsonObject itemPart = findPrintPart(packet, "item_id", 0);
+        JsonObject locationPart = findPrintPart(packet, "location_id", 0);
+        String rawItemName = getString(itemPart, "text");
         String rawSenderName = findPrintPartText(packet, "player_id", 0);
         String rawReceiverName = findPrintPartText(packet, "player_id", 1);
-        String rawLocationName = findPrintPartText(packet, "location_id", 0);
-        int senderSlot = parsePositiveInt(rawSenderName, -1);
-        int receiverSlot = parsePositiveInt(rawReceiverName, packet.has("receiving") ? packet.get("receiving").getAsInt() : -1);
+        String rawLocationName = getString(locationPart, "text");
+        int receivingSlot = packet.has("receiving") ? packet.get("receiving").getAsInt() : -1;
+        int senderSlot = getInt(locationPart, "player", parsePositiveInt(rawSenderName, -1));
+        int receiverSlot = getInt(itemPart, "player", receivingSlot);
+        if (receiverSlot < 0) {
+            receiverSlot = parsePositiveInt(rawReceiverName, -1);
+        }
         long itemId = parsePositiveLong(rawItemName, Long.MIN_VALUE);
         String itemName = resolveItemName(rawItemName, receiverSlot);
-        String senderName = resolvePlayerName(rawSenderName);
-        String receiverName = resolvePlayerName(rawReceiverName);
+        TextColor itemColor = getItemColor(itemPart, itemId);
+        String senderName = senderSlot >= 0 ? getPlayerName(senderSlot) : resolvePlayerName(rawSenderName);
+        String receiverName = receiverSlot >= 0 ? getPlayerName(receiverSlot) : resolvePlayerName(rawReceiverName);
         String locationName = resolveLocationName(rawLocationName, senderSlot);
 
-        int receivingSlot = packet.has("receiving") ? packet.get("receiving").getAsInt() : -1;
         boolean receivingHere = receivingSlot == slot || receiverSlot == slot || (receiverName != null && receiverName.equals(slotName));
         boolean sentByHere = senderSlot == slot || (senderName != null && senderName.equals(slotName));
         boolean selfFound = senderSlot > 0 && senderSlot == receiverSlot;
@@ -615,28 +839,124 @@ public class APWebSocketClient implements WebSocket.Listener {
         }
 
         MutableComponent message;
-        if (found || selfFound || (receivingHere && sentByHere)) {
-            message = colored("You", ChatFormatting.YELLOW)
-                    .append(colored(" found your ", ChatFormatting.WHITE))
-                    .append(quoted(itemName, ChatFormatting.AQUA, false));
+        if (receivingHere && (sentByHere || selfFound)) {
+            message = colored(localSlotDisplayName(), ChatFormatting.YELLOW)
+                    .append(colored(" found their ", ChatFormatting.WHITE))
+                    .append(quoted(itemName, itemColor, false));
         } else if (receivingHere) {
-            message = new TextComponent("Received ")
-                    .append(quoted(itemName, ChatFormatting.AQUA, false))
-                    .append(new TextComponent(" from "))
-                    .append(colored(senderName, ChatFormatting.YELLOW));
+            message = colored(senderName, ChatFormatting.YELLOW)
+                    .append(colored(" sent ", ChatFormatting.WHITE))
+                    .append(quoted(itemName, itemColor, false))
+                    .append(colored(" to you", ChatFormatting.WHITE));
+        } else if (selfFound || found) {
+            message = colored(senderName, ChatFormatting.YELLOW)
+                    .append(colored(" found their ", ChatFormatting.WHITE))
+                    .append(quoted(itemName, itemColor, false));
         } else {
             message = colored(senderName, ChatFormatting.YELLOW)
                     .append(colored(" sent ", ChatFormatting.WHITE))
-                    .append(colored(itemName, ChatFormatting.AQUA))
+                    .append(colored(itemName, itemColor))
                     .append(colored(" to ", ChatFormatting.WHITE))
                     .append(colored(receiverName, ChatFormatting.YELLOW));
-            if (locationName != null && !locationName.isBlank()) {
-                message.append(colored(" (", ChatFormatting.WHITE))
-                        .append(colored(locationName, ChatFormatting.GREEN))
-                        .append(colored(")", ChatFormatting.WHITE));
-            }
         }
 
+        if (locationName != null && !locationName.isBlank()) {
+            message.append(colored(" (", ChatFormatting.WHITE))
+                    .append(colored(locationName, ChatFormatting.GREEN))
+                    .append(colored(")", ChatFormatting.WHITE));
+        }
+
+        broadcastComponentToPlayers(message);
+    }
+
+    private JsonObject findPrintPart(JsonObject packet, String type, int occurrence) {
+        if (!packet.has("data") || !packet.get("data").isJsonArray()) {
+            return null;
+        }
+
+        int seen = 0;
+        for (JsonElement element : packet.getAsJsonArray("data")) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            JsonObject part = element.getAsJsonObject();
+            if (type.equals(getString(part, "type"))) {
+                if (seen == occurrence) {
+                    return part;
+                }
+                seen++;
+            }
+        }
+        return null;
+    }
+
+    private int getInt(JsonObject object, String key, int fallback) {
+        if (object == null || !object.has(key) || !object.get(key).isJsonPrimitive()) {
+            return fallback;
+        }
+        try {
+            return object.get(key).getAsInt();
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private TextColor getItemColor(JsonObject itemPart, long itemId) {
+        int flags = getInt(itemPart, "flags", 0);
+        return getItemColor(flags, itemId);
+    }
+
+    private TextColor getItemColor(int flags, long itemId) {
+        if ((flags & 4) != 0) {
+            return legacyTextColor(ChatFormatting.RED);
+        }
+        if ((flags & 1) != 0) {
+            return progressionTextColor();
+        }
+        if ((flags & 2) != 0) {
+            return legacyTextColor(ChatFormatting.AQUA);
+        }
+        return getLocalItemColor(itemId);
+    }
+
+    private TextColor getLocalItemColor(long itemId) {
+        if (getProgressionItemName(itemId) != null || VaultHuntersData.getLocationNameById(itemId) != null) {
+            return progressionTextColor();
+        }
+        if (itemId >= 33700L && itemId < 33800L) {
+            return legacyTextColor(ChatFormatting.AQUA);
+        }
+        return legacyTextColor(ChatFormatting.AQUA);
+    }
+
+    private TextColor progressionTextColor() {
+        return TextColor.fromRgb(PROGRESSION_RGB);
+    }
+
+    private TextColor legacyTextColor(ChatFormatting color) {
+        TextColor textColor = TextColor.fromLegacyFormat(color);
+        return textColor != null ? textColor : TextColor.fromRgb(color.getColor() != null ? color.getColor() : 0xFFFFFF);
+    }
+
+    private void sendReceivedItemMessage(ServerPlayer player, long locationId, int sendingPlayer, String itemName) {
+        sendReceivedItemMessage(player, locationId, sendingPlayer, itemName, legacyTextColor(ChatFormatting.AQUA));
+    }
+
+    private void sendReceivedItemMessage(ServerPlayer player, long locationId, int sendingPlayer, String itemName, TextColor itemColor) {
+        String senderName = getPlayerName(sendingPlayer);
+        MutableComponent message;
+        if (sendingPlayer == slot || senderName == null || senderName.isBlank() || senderName.equals(slotName)) {
+            message = colored(localSlotDisplayName(), ChatFormatting.YELLOW)
+                    .append(colored(" found their ", ChatFormatting.WHITE))
+                    .append(quoted(itemName, itemColor, false));
+        } else {
+            message = colored(senderName, ChatFormatting.YELLOW)
+                    .append(colored(" sent ", ChatFormatting.WHITE))
+                    .append(quoted(itemName, itemColor, false))
+                    .append(colored(" to you", ChatFormatting.WHITE));
+        }
+
+        appendSourceLocation(message, locationId, sendingPlayer);
         broadcastComponentToPlayers(message);
     }
 
@@ -681,6 +1001,63 @@ public class APWebSocketClient implements WebSocket.Listener {
         LOGGER.info("Sending LocationChecks packet: {}", gson.toJson(wrapper));
         webSocket.sendText(gson.toJson(wrapper), true);
         LOGGER.info("Sent location check: {}", locationId);
+    }
+
+    public void scoutLocation(ServerPlayer player, long locationId) {
+        if (!isConnected() || webSocket == null) {
+            return;
+        }
+
+        scoutTargetsByLocation.put(locationId, player.getUUID());
+
+        JsonObject packet = new JsonObject();
+        packet.addProperty("cmd", "LocationScouts");
+        JsonArray locations = new JsonArray();
+        locations.add((int) locationId);
+        packet.add("locations", locations);
+        packet.addProperty("create_as_hint", false);
+
+        JsonArray wrapper = new JsonArray();
+        wrapper.add(packet);
+
+        webSocket.sendText(gson.toJson(wrapper), true);
+        LOGGER.info("Requested AP scout for location {}", locationId);
+    }
+
+    public String getScoutedRewardName(long locationId) {
+        return scoutedRewardsByLocation.get(locationId);
+    }
+
+    private void updateCheckItemRewardName(long locationId, String itemName) {
+        if (server == null || itemName == null || itemName.isBlank()) {
+            return;
+        }
+
+        UUID targetId = scoutTargetsByLocation.get(locationId);
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            if (targetId != null && !player.getUUID().equals(targetId)) {
+                continue;
+            }
+
+            for (ItemStack stack : player.getInventory().items) {
+                updateStackRewardName(stack, locationId, itemName);
+            }
+            for (ItemStack stack : player.getInventory().offhand) {
+                updateStackRewardName(stack, locationId, itemName);
+            }
+            player.getInventory().setChanged();
+            player.containerMenu.broadcastChanges();
+        }
+    }
+
+    private void updateStackRewardName(ItemStack stack, long locationId, String itemName) {
+        if (stack.isEmpty() || !stack.hasTag()) {
+            return;
+        }
+        if (stack.getTag().getLong("LocationID") != locationId) {
+            return;
+        }
+        stack.getOrCreateTag().putString("RewardName", itemName);
     }
 
     public void checkGoalReached(ServerPlayer player) {
@@ -803,7 +1180,7 @@ public class APWebSocketClient implements WebSocket.Listener {
         return index >= 0 && index < expertises.length ? expertises[index] : "unknown";
     }
 
-    private void giveFillerItem(ServerPlayer player, long itemId, String sourcePlayerName) {
+    private void giveFillerItem(ServerPlayer player, long itemId, String sourcePlayerName, long sourceLocationId, int sendingPlayer) {
         int index = (int)(itemId - 33700);
 
         // Map to actual VH items/commands [itemId, baseCount]
@@ -926,10 +1303,6 @@ public class APWebSocketClient implements WebSocket.Listener {
                 {"the_vault:omega_pog", "1"}
         };
 
-        if (itemId >= 33700L && itemId < 33800L) {
-            index = random.nextInt(fillers.length);
-        }
-
         if (index >= 0 && index < fillers.length) {
             String itemId_str = fillers[index][0];
             int baseCount = Integer.parseInt(fillers[index][1]);
@@ -947,13 +1320,12 @@ public class APWebSocketClient implements WebSocket.Listener {
                     itemId_str.startsWith("the_vault:boots")) {
 
                 String gearType = itemId_str.substring(itemId_str.indexOf(':') + 1);
-                giveVaultGear(player, gearType, sourcePlayerName);
+                giveVaultGear(player, gearType, sourcePlayerName, sourceLocationId, sendingPlayer);
                 return;
             }
 
-            // Apply random multiplier (1.0x, 1.25x, 1.5x, 1.75x, or 2.0x)
             float[] multipliers = {1.0f, 1.25f, 1.5f, 1.75f, 2.0f};
-            float multiplier = multipliers[new java.util.Random().nextInt(multipliers.length)];
+            float multiplier = multipliers[new Random().nextInt(multipliers.length)];
             int finalCount = Math.max(1, (int)Math.floor(baseCount * multiplier));
 
             // Execute /give command on server thread
@@ -970,14 +1342,17 @@ public class APWebSocketClient implements WebSocket.Listener {
             LOGGER.info("Gave {} x{} ({}x multiplier) to {}",
                     itemId_str, finalCount, multiplier, player.getName().getString());
 
-            sendFoundItemMessage(player, finalCount + "x " + displayItemName(itemId_str));
+            String rewardName = getFillerRewardName(itemId);
+            sendReceivedItemMessage(player, sourceLocationId, sendingPlayer,
+                    rewardName != null ? rewardName : displayStackName(itemId_str, finalCount),
+                    getItemColor(0, itemId));
         } else {
             LOGGER.warn("Invalid filler item index: {}", index);
         }
     }
 
 
-    private void giveVaultGear(ServerPlayer player, String gearType, String sourcePlayerName) {
+    private void giveVaultGear(ServerPlayer player, String gearType, String sourcePlayerName, long sourceLocationId, int sendingPlayer) {
         try {
             // Get player's vault level
             int playerLevel = VHDataReader.getPlayerLevel(player);
@@ -1082,7 +1457,7 @@ public class APWebSocketClient implements WebSocket.Listener {
                 player.drop(stack, false);
             }
 
-            sendFoundItemMessage(player, String.format("Vault %s (Level %d)", gearType, playerLevel));
+            sendReceivedItemMessage(player, sourceLocationId, sendingPlayer, String.format("Vault %s (Level %d)", gearType, playerLevel), legacyTextColor(ChatFormatting.AQUA));
 
         } catch (Exception e) {
             LOGGER.error("Failed to give vault gear: ", e);
@@ -1100,6 +1475,9 @@ public class APWebSocketClient implements WebSocket.Listener {
     // ========== UTILITY ==========
 
     private String getString(JsonObject object, String key) {
+        if (object == null) {
+            return "";
+        }
         return object.has(key) && !object.get(key).isJsonNull() ? object.get(key).getAsString() : "";
     }
 
@@ -1155,13 +1533,24 @@ public class APWebSocketClient implements WebSocket.Listener {
     }
 
     private String resolveItemNameForGame(long itemId, String gameName) {
+        String localName = resolveLocalItemName(itemId);
+        if (localName != null) {
+            return localName;
+        }
+
         if (gameName != null) {
             Map<Long, String> dataPackageItems = itemNamesByGame.get(gameName);
             if (dataPackageItems != null && dataPackageItems.containsKey(itemId)) {
                 return dataPackageItems.get(itemId);
             }
         }
+        if (itemId >= 44000L && itemId < 44500L) {
+            return "Chest Check " + (itemId - 44000L + 1L);
+        }
+        return "Unknown Item [" + itemId + "]";
+    }
 
+    private String resolveLocalItemName(long itemId) {
         String progressionName = getProgressionItemName(itemId);
         if (progressionName != null) {
             return progressionName;
@@ -1173,12 +1562,15 @@ public class APWebSocketClient implements WebSocket.Listener {
         }
 
         if (itemId >= 33700L && itemId < 33800L) {
-            return "Filler";
+            String fillerName = getFillerRewardName(itemId);
+            return fillerName != null ? fillerName : "Useful Vault Supplies";
         }
-        if (itemId >= 44000L && itemId < 44500L) {
-            return "Chest Check " + (itemId - 44000L + 1L);
-        }
-        return "Unknown Item [" + itemId + "]";
+        return null;
+    }
+
+    private String getFillerRewardName(long itemId) {
+        int index = (int)(itemId - 33700L);
+        return index >= 0 && index < FILLER_REWARD_NAMES.length ? FILLER_REWARD_NAMES[index] : null;
     }
 
     private String resolveLocationName(String value, int senderSlot) {
@@ -1192,6 +1584,16 @@ public class APWebSocketClient implements WebSocket.Listener {
             Map<Long, String> dataPackageLocations = locationNamesByGame.get(gameName);
             if (dataPackageLocations != null && dataPackageLocations.containsKey(locationId)) {
                 return dataPackageLocations.get(locationId);
+            }
+        }
+
+        if (senderSlot == slot || game.equals(gameName)) {
+            String localName = VaultHuntersData.getLocationNameById(locationId);
+            if (localName != null) {
+                return localName;
+            }
+            if (locationId >= 44000L && locationId < 44500L) {
+                return "Chest Check " + (locationId - 44000L + 1L);
             }
         }
 
@@ -1269,8 +1671,35 @@ public class APWebSocketClient implements WebSocket.Listener {
         return display.toString();
     }
 
+    private String displayStackName(String itemId, int count) {
+        if ("minecraft:experience_bottle".equals(itemId)) {
+            if (count >= 40) {
+                return "A crate of XP bottles";
+            }
+            if (count >= 16) {
+                return "A bundle of XP bottles";
+            }
+            return count + "x XP Bottle";
+        }
+
+        String itemName = displayItemName(itemId);
+        if (count == 1) {
+            return itemName;
+        }
+        return count + "x " + itemName;
+    }
+
     private MutableComponent quoted(String text, ChatFormatting color, boolean bold) {
         MutableComponent component = new TextComponent("\"" + text + "\"").withStyle(color);
+        if (bold) {
+            component.withStyle(ChatFormatting.BOLD);
+        }
+        return component;
+    }
+
+    private MutableComponent quoted(String text, TextColor color, boolean bold) {
+        MutableComponent component = new TextComponent("\"" + text + "\"")
+                .withStyle(style -> style.withColor(color));
         if (bold) {
             component.withStyle(ChatFormatting.BOLD);
         }
@@ -1281,20 +1710,72 @@ public class APWebSocketClient implements WebSocket.Listener {
         return new TextComponent(text).withStyle(color);
     }
 
-    private void sendFoundItemMessage(ServerPlayer player, String itemName) {
-        MutableComponent message = colored("You", ChatFormatting.YELLOW)
-                .append(colored(" found your ", ChatFormatting.WHITE))
-                .append(quoted(itemName, ChatFormatting.AQUA, false));
-        player.sendMessage(message, player.getUUID());
+    private MutableComponent colored(String text, TextColor color) {
+        return new TextComponent(text).withStyle(style -> style.withColor(color));
     }
 
-    private void sendFoundUnlockMessage(ServerPlayer player, String type, String unlockName) {
-        MutableComponent message = colored("You", ChatFormatting.YELLOW)
-                .append(colored(" found your ", ChatFormatting.WHITE))
-                .append(colored(capitalize(type), ChatFormatting.AQUA))
+    private void appendSourceLocation(MutableComponent message, long locationId, int senderSlot) {
+        if (locationId <= 0L) {
+            return;
+        }
+
+        String locationName = resolveLocationName(Long.toString(locationId), senderSlot);
+        if (locationName == null || locationName.isBlank()) {
+            return;
+        }
+
+        message.append(colored(" (", ChatFormatting.WHITE))
+                .append(colored(locationName, ChatFormatting.GREEN))
+                .append(colored(")", ChatFormatting.WHITE));
+    }
+
+    private String localSlotDisplayName() {
+        if (slotName != null && !slotName.isBlank()) {
+            return slotName;
+        }
+        ServerPlayer player = getCurrentPlayer();
+        return player != null ? player.getName().getString() : "Player";
+    }
+
+    private void sendFoundItemMessage(ServerPlayer player, long locationId, String itemName) {
+        MutableComponent message = colored(localSlotDisplayName(), ChatFormatting.YELLOW)
+                .append(colored(" found their ", ChatFormatting.WHITE))
+                .append(quoted(itemName, getItemColor(0, Long.MIN_VALUE), false));
+        broadcastComponentToPlayers(message);
+    }
+
+    private void sendFoundUnlockMessage(long locationId, String type, String unlockName) {
+        MutableComponent message = colored(localSlotDisplayName(), ChatFormatting.YELLOW)
+                .append(colored(" found their ", ChatFormatting.WHITE))
+                .append(colored(capitalize(type), ChatFormatting.DARK_PURPLE))
                 .append(colored(": ", ChatFormatting.WHITE))
-                .append(colored(displayUnlockName(unlockName), ChatFormatting.AQUA));
-        player.sendMessage(message, player.getUUID());
+                .append(colored(displayUnlockName(unlockName), ChatFormatting.DARK_PURPLE));
+        broadcastComponentToPlayers(message);
+    }
+
+    private void sendReceivedUnlockMessage(long locationId, int sendingPlayer, String type, String unlockName) {
+        String senderName = getPlayerName(sendingPlayer);
+        MutableComponent message;
+        if (sendingPlayer == slot || senderName == null || senderName.isBlank() || senderName.equals(slotName)) {
+            message = colored(localSlotDisplayName(), ChatFormatting.YELLOW)
+                    .append(colored(" found their ", ChatFormatting.WHITE))
+                    .append(colored(capitalize(type), ChatFormatting.DARK_PURPLE))
+                    .append(colored(": ", ChatFormatting.WHITE))
+                    .append(colored(displayUnlockName(unlockName), ChatFormatting.DARK_PURPLE));
+        } else {
+            message = colored(senderName, ChatFormatting.YELLOW)
+                    .append(colored(" sent ", ChatFormatting.WHITE))
+                    .append(colored(capitalize(type), ChatFormatting.DARK_PURPLE))
+                    .append(colored(": ", ChatFormatting.WHITE))
+                    .append(colored(displayUnlockName(unlockName), ChatFormatting.DARK_PURPLE))
+                    .append(colored(" to you", ChatFormatting.WHITE));
+        }
+
+        broadcastComponentToPlayers(message);
+    }
+
+    private boolean isChestCheckLocation(long locationId) {
+        return locationId >= 44000L && locationId < 44500L;
     }
 
     private String capitalize(String value) {
@@ -1307,8 +1788,15 @@ public class APWebSocketClient implements WebSocket.Listener {
     private void broadcastComponentToPlayers(MutableComponent message) {
         if (server == null) return;
 
+        if (!server.isSameThread()) {
+            MutableComponent copy = message.copy();
+            server.execute(() -> broadcastComponentToPlayers(copy));
+            return;
+        }
+
+        LOGGER.info("[AP Chat] {}", message.getString());
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            player.sendMessage(message, player.getUUID());
+            player.sendMessage(message.copy(), player.getUUID());
         }
     }
 
@@ -1316,7 +1804,35 @@ public class APWebSocketClient implements WebSocket.Listener {
         if (server == null) return null;
 
         List<ServerPlayer> players = server.getPlayerList().getPlayers();
-        return players.isEmpty() ? null : players.get(0);
+        if (players.isEmpty()) {
+            return null;
+        }
+
+        if (targetPlayerId != null) {
+            for (ServerPlayer player : players) {
+                if (player.getUUID().equals(targetPlayerId)) {
+                    return player;
+                }
+            }
+
+            LOGGER.warn("Preferred AP reward target {} is not online; falling back to slot-name lookup", targetPlayerId);
+        }
+
+        if (slotName != null && !slotName.isBlank()) {
+            for (ServerPlayer player : players) {
+                if (player.getGameProfile().getName().equalsIgnoreCase(slotName)) {
+                    return player;
+                }
+                if (player.getName().getString().equalsIgnoreCase(slotName)) {
+                    return player;
+                }
+            }
+
+            LOGGER.warn("No online Minecraft player matched AP slot '{}'; using {} as fallback",
+                    slotName, players.get(0).getGameProfile().getName());
+        }
+
+        return players.get(0);
     }
 
     private void sendConnectedMessageToPlayers() {
@@ -1325,6 +1841,11 @@ public class APWebSocketClient implements WebSocket.Listener {
 
     private void broadcastStatusToPlayers(String message, ChatFormatting color) {
         if (server == null) return;
+
+        if (!server.isSameThread()) {
+            server.execute(() -> broadcastStatusToPlayers(message, color));
+            return;
+        }
 
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             player.sendMessage(
