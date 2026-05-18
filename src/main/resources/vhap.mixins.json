@@ -2,25 +2,27 @@
   "required": true,
   "minVersion": "0.8",
   "package": "com.example.vhapmod.mixin",
+  "refmap": "vhap.refmap.json",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
-    "QuestCompletionMixin",
-    "TrinketDiscoveryMixin",
-    "AbilityLevelMessageMixin",
-    "TalentLevelMessageMixin",
-    "ExpertiseLevelMessageMixin",
-    "ModResearchPreventionMixin",
-    "VaultGearLevelMixin",
-    "VaultGearRarityMixin",
-    "VaultExperienceMultiplierMixin",
-    "VaultLootMultiplierMixin",
-    "ArtifactProjectorCompletionMixin",
-    "HeraldDefeatMixin"
+    "studmuffn.vhapmod.mixin.QuestCompletionMixin",
+    "studmuffn.vhapmod.mixin.TrinketDiscoveryMixin",
+    "studmuffn.vhapmod.mixin.AbilityLevelMessageMixin",
+    "studmuffn.vhapmod.mixin.TalentLevelMessageMixin",
+    "studmuffn.vhapmod.mixin.ExpertiseLevelMessageMixin",
+    "studmuffn.vhapmod.mixin.ModResearchPreventionMixin",
+    "studmuffn.vhapmod.mixin.VaultGearLevelMixin",
+    "studmuffn.vhapmod.mixin.VaultGearRarityMixin",
+    "studmuffn.vhapmod.mixin.VaultExperienceMultiplierMixin",
+    "studmuffn.vhapmod.mixin.VaultLootMultiplierMixin",
+    "studmuffn.vhapmod.mixin.ArtifactProjectorCompletionMixin",
+    "studmuffn.vhapmod.mixin.HeraldDefeatMixin",
+    "studmuffn.vhapmod.mixin.SlotMaxStackSizeMixin"
   ],
   "client": [
-    "AbilityTooltipMixin",
-    "SkillTooltipMixin",
-    "ModTooltipMixin"
+    "studmuffn.vhapmod.mixin.AbilityTooltipMixin",
+    "studmuffn.vhapmod.mixin.SkillTooltipMixin",
+    "studmuffn.vhapmod.mixin.ModTooltipMixin"
   ],
   "injectors": {
     "defaultRequire": 1
