@@ -16,7 +16,7 @@ Q: Do I need to host a MC server for this to work?
 A: No, the mod runs through the internal server that is created with singleplayer worlds.
 
 Q: Is this compatible with multiplayer servers/other methods of playing with others?
-A: Methods like Essentials, E4MC, have not been tested, BUT hosting a server has been tested and correctly works.
+A: Methods like Essentials, E4MC, have been tested, but expect bugs, and hosting a server has been tested and correctly works.
 
 Q: I completed a check, but forgot to connect to the APworld, is the check lost?
 A: As the code currently is, most likely. The check tries to send, but is lost as it has nowhere to go. (After connecting to a server once, the mod will auto-attempt to connect you to the most recent AP server)
