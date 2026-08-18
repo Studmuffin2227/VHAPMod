@@ -8,7 +8,7 @@ Place the vhapmod.jar into the mods folder of said instance.
 Load a New Minecraft World, and use /apconnect [address] [port] [slotName] to connect to the AP server.
 Play
 
-(For a Sync: It is recommened for 20-25% normal chest check chance, if you are solo.)
+(For a Sync: It is recommened for 20-25% archapela-bit chance, if you are solo.)
 (For an Async: You could decrease chance and turn off the auto unlock skills option.)
 
 FAQ: 
