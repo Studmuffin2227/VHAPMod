@@ -89,8 +89,8 @@ public class VHDataReader {
                     Method isUnlocked = skill.getClass().getMethod("isUnlocked");
                     boolean unlocked_status = (boolean) isUnlocked.invoke(skill);
 
-                    Method getName = skill.getClass().getMethod("getName");
-                    String name = (String) getName.invoke(skill);
+                    Method getId = skill.getClass().getMethod("getId");
+                    String name = (String) getId.invoke(skill);
 
                     // Only track skills with actual names
                     if (name != null && !name.isEmpty() && unlocked_status) {
@@ -141,8 +141,8 @@ public class VHDataReader {
                     Method isUnlocked = skill.getClass().getMethod("isUnlocked");
                     boolean unlocked_status = (boolean) isUnlocked.invoke(skill);
 
-                    Method getName = skill.getClass().getMethod("getName");
-                    String name = (String) getName.invoke(skill);
+                    Method getId = skill.getClass().getMethod("getId");
+                    String name = (String) getId.invoke(skill);
 
                     if (name != null && !name.isEmpty() && unlocked_status) {
                         // ADD THIS DEBUG LINE:

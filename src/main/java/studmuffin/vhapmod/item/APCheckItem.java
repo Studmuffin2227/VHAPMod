@@ -8,6 +8,7 @@ import net.minecraft.network.chat.TextComponent;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -104,9 +105,9 @@ public class APCheckItem extends Item {
             return false;
         }
 
-        if (locationId < 44000L || locationId >= 44500L) {
+        if (!isValidCheckLocation(locationId)) {
             player.sendMessage(
-                    new TextComponent("Invalid AP chest check ID: " + locationId)
+                    new TextComponent("Invalid AP check ID: " + locationId)
                             .withStyle(ChatFormatting.RED),
                     player.getUUID()
             );
@@ -114,7 +115,7 @@ public class APCheckItem extends Item {
         }
 
         var client = VaultHuntersAPMod.getAPClient();
-        int checkNumber = (int)(locationId - 44000 + 1);
+        int checkNumber = getCheckNumber(locationId);
 
         if (client != null && client.isConnected()) {
             client.sendLocationCheck(locationId);
@@ -132,6 +133,9 @@ public class APCheckItem extends Item {
 
             return true;
         } else {
+            if (stack.hasTag() && stack.getTag().getBoolean("AutoClaim")) {
+                return false;
+            }
             player.sendMessage(
                     new TextComponent("Check #" + checkNumber + " (not connected)")
                             .withStyle(ChatFormatting.YELLOW),
@@ -151,6 +155,35 @@ public class APCheckItem extends Item {
         return 0;
     }
 
+    private boolean isValidCheckLocation(long locationId) {
+        return (locationId >= 44000L && locationId < 44500L)
+                || (locationId >= 43650L && locationId < 43700L)
+                || (locationId >= 44500L && locationId < 44650L);
+    }
+
+    private int getCheckNumber(long locationId) {
+        if (locationId >= 43650L && locationId < 43700L) {
+            return (int)(locationId - 43650L + 1L);
+        }
+        if (locationId >= 44500L && locationId < 44650L) {
+            return (int)(locationId - 44500L + 51L);
+        }
+        return (int)(locationId - 44000L + 1L);
+    }
+
+    @Override
+    public void inventoryTick(ItemStack stack, Level level, Entity entity, int slot, boolean selected) {
+        if (level.isClientSide || !(entity instanceof ServerPlayer player) || !stack.hasTag()
+                || !stack.getTag().getBoolean("AutoClaim")) {
+            return;
+        }
+        if (!sendCheck(player, stack)) {
+            return;
+        }
+        stack.shrink(1);
+        player.getInventory().setChanged();
+    }
+
     @Override
     public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> tooltip, TooltipFlag flag) {
         long locationId = getLocationId(stack);
@@ -161,42 +194,64 @@ public class APCheckItem extends Item {
             return;
         }
 
-        tooltip.add(new TextComponent("Archipelago Check")
+        tooltip.add(new TextComponent(stack.hasTag() && stack.getTag().getBoolean("BountyCheck") ? "Bounty Check #" + getCheckNumber(locationId) : "Archipelago Check")
                 .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
         tooltip.add(new TextComponent(" "));
-        if (stack.hasTag() && stack.getTag().contains("ShopBits")) {
-            int bits = stack.getTag().getInt("ShopBits");
-            boolean trapReward = stack.getTag().getBoolean("ShopTrapReward");
-            tooltip.add(new TextComponent((trapReward ? "Pays: " : "Costs: ") + bits + " Archipela-bits")
-                    .withStyle(trapReward ? ChatFormatting.RED : ChatFormatting.YELLOW));
-        }
-        if (stack.hasTag() && stack.getTag().contains("RewardName")) {
-            tooltip.add(getContainsText(stack));
+
+        String displayMode = getRewardDisplayMode(stack);
+        if ("nothing".equals(displayMode)) {
+            tooltip.add(new TextComponent("A Mysterious Item From Another World")
+                    .withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
+        } else if ("classification".equals(displayMode)) {
+            tooltip.add(getClassificationText(stack, locationId));
         } else {
-            tooltip.add(new TextComponent("Contains: unknown")
-                    .withStyle(ChatFormatting.DARK_GRAY));
-        }
-        if (!isRewardForLocalSlot(stack)) {
-            tooltip.add(new TextComponent(" "));
-            tooltip.add(getMysteryText(stack));
+            String rewardName = getRewardName(stack, locationId);
+            if (rewardName != null && !rewardName.isBlank()) {
+                tooltip.add(getContainsText(stack, locationId, rewardName));
+            } else {
+                tooltip.add(new TextComponent("Contains: unknown")
+                        .withStyle(ChatFormatting.DARK_GRAY));
+            }
+            if (!isRewardForLocalSlot(stack, locationId)) {
+                tooltip.add(new TextComponent(" "));
+                tooltip.add(getMysteryText(stack, locationId));
+            }
         }
         tooltip.add(new TextComponent(" "));
         tooltip.add(new TextComponent(stack.hasTag() && stack.getTag().contains("ShopBits") ? "Click in Check Table" : "Right-click to claim")
                 .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
     }
 
-    private Component getContainsText(ItemStack stack) {
-        int flags = stack.hasTag() ? stack.getTag().getInt("ItemFlags") : 0;
+    private String getRewardDisplayMode(ItemStack stack) {
+        var client = VaultHuntersAPMod.getAPClient();
+        if (client == null) {
+            return "all";
+        }
+        if (client.isCheckRewardHinted(getLocationId(stack))) {
+            return "all";
+        }
+        if (stack.hasTag() && stack.getTag().getBoolean("BountyCheck")) {
+            return client.getBountyCheckRewardDisplay();
+        }
+        if (stack.hasTag() && stack.getTag().contains("ShopBits")) {
+            return client.getShopCheckRewardDisplay();
+        }
+        return "all";
+    }
+
+    private Component getContainsText(ItemStack stack, long locationId, String rewardName) {
+        int flags = getRewardFlags(stack, locationId);
         ChatFormatting itemColor = getItemColor(stack, flags);
         MutableComponent message = new TextComponent("Contains: ")
                 .withStyle(ChatFormatting.GRAY);
-        message.append(new TextComponent(stack.getTag().getString("RewardName"))
+        message.append(new TextComponent(rewardName)
                 .withStyle(itemColor));
 
-        if (stack.getTag().contains("ReceiverSlotName")) {
+        String receiverName = getRewardReceiverName(stack, locationId);
+        if (receiverName != null && !receiverName.isBlank()) {
             message.append(new TextComponent(" for ")
                     .withStyle(ChatFormatting.GRAY));
-            message.append(new TextComponent(stack.getTag().getString("ReceiverSlotName"))
+            message.append(new TextComponent(receiverName)
                     .withStyle(ChatFormatting.YELLOW));
         }
         return message;
@@ -212,11 +267,15 @@ public class APCheckItem extends Item {
         return ChatFormatting.AQUA;
     }
 
-    private boolean isRewardForLocalSlot(ItemStack stack) {
-        return stack.hasTag() && stack.getTag().getBoolean("RewardForLocalSlot");
+    private boolean isRewardForLocalSlot(ItemStack stack, long locationId) {
+        if (stack.hasTag() && stack.getTag().contains("RewardForLocalSlot")) {
+            return stack.getTag().getBoolean("RewardForLocalSlot");
+        }
+        var client = VaultHuntersAPMod.getAPClient();
+        return client == null || client.isScoutedRewardLocal(locationId);
     }
 
-    private Component getMysteryText(ItemStack stack) {
+    private Component getMysteryText(ItemStack stack, long locationId) {
         if (!stack.hasTag()) {
             return new TextComponent("You don't know what this is, but it seems useless")
                     .withStyle(ChatFormatting.DARK_GRAY);
@@ -227,7 +286,7 @@ public class APCheckItem extends Item {
                     .withStyle(ChatFormatting.RED);
         }
 
-        int flags = stack.getTag().getInt("ItemFlags");
+        int flags = getRewardFlags(stack, locationId);
         if ((flags & 1) != 0) {
             MutableComponent message = new TextComponent("You don't know what this is, but it seems ")
                     .withStyle(ChatFormatting.GRAY);
@@ -235,12 +294,79 @@ public class APCheckItem extends Item {
                     .withStyle(ChatFormatting.LIGHT_PURPLE, ChatFormatting.BOLD));
             return message;
         }
-        if ((flags & 2) != 0 || flags == 0) {
+        if ((flags & 2) != 0) {
             return new TextComponent("You don't know what this is, but it seems to have a use")
                     .withStyle(ChatFormatting.GRAY);
         }
-        return new TextComponent("You don't know what this is, but it seems to have a use")
+        return new TextComponent("You don't know what this is, but it seems probably not needed")
+                .withStyle(ChatFormatting.DARK_GRAY);
+    }
+
+    private Component getClassificationText(ItemStack stack, long locationId) {
+        int flags = getRewardFlags(stack, locationId);
+        String classification = getClassificationName(flags);
+        ChatFormatting color = getClassificationColor(flags);
+        boolean localReward = isRewardForLocalSlot(stack, locationId);
+
+        MutableComponent message = new TextComponent(localReward
+                ? "You know what this is, and it is "
+                : "You don't know what this is, and it seems like it is ")
                 .withStyle(ChatFormatting.GRAY);
+        TextComponent classificationText = new TextComponent(classification);
+        message.append((flags & 1) != 0
+                ? classificationText.withStyle(color, ChatFormatting.BOLD)
+                : classificationText.withStyle(color));
+        return message;
+    }
+
+    private String getClassificationName(int flags) {
+        if ((flags & 4) != 0) {
+            return "Harmful";
+        }
+        if ((flags & 1) != 0) {
+            return "IMPORTANT";
+        }
+        if ((flags & 2) != 0) {
+            return "Useful";
+        }
+        return "Probably not needed";
+    }
+
+    private ChatFormatting getClassificationColor(int flags) {
+        if ((flags & 4) != 0) {
+            return ChatFormatting.RED;
+        }
+        if ((flags & 1) != 0) {
+            return ChatFormatting.LIGHT_PURPLE;
+        }
+        if ((flags & 2) != 0) {
+            return ChatFormatting.AQUA;
+        }
+        return ChatFormatting.DARK_GRAY;
+    }
+
+    private String getRewardName(ItemStack stack, long locationId) {
+        if (stack.hasTag() && stack.getTag().contains("RewardName")) {
+            return stack.getTag().getString("RewardName");
+        }
+        var client = VaultHuntersAPMod.getAPClient();
+        return client != null ? client.getScoutedRewardName(locationId) : null;
+    }
+
+    private int getRewardFlags(ItemStack stack, long locationId) {
+        if (stack.hasTag() && stack.getTag().contains("ItemFlags")) {
+            return stack.getTag().getInt("ItemFlags");
+        }
+        var client = VaultHuntersAPMod.getAPClient();
+        return client != null ? client.getScoutedRewardFlags(locationId) : 0;
+    }
+
+    private String getRewardReceiverName(ItemStack stack, long locationId) {
+        if (stack.hasTag() && stack.getTag().contains("ReceiverSlotName")) {
+            return stack.getTag().getString("ReceiverSlotName");
+        }
+        var client = VaultHuntersAPMod.getAPClient();
+        return client != null ? client.getScoutedRewardReceiverName(locationId) : null;
     }
 
     @Override

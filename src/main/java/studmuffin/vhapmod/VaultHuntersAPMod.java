@@ -4,6 +4,7 @@ import studmuffin.vhapmod.block.ModBlocks;
 import studmuffin.vhapmod.event.VaultChestEventListener;
 import studmuffin.vhapmod.item.ModItems;
 import studmuffin.vhapmod.menu.ModMenus;
+import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
@@ -33,6 +34,7 @@ public class VaultHuntersAPMod {
         ModBlocks.BLOCKS.register(modEventBus);
         ModItems.ITEMS.register(modEventBus);
         ModMenus.MENUS.register(modEventBus);
+        ModSounds.SOUNDS.register(modEventBus);
         LOGGER.info("Items registered!");
 
         //Register the Chest Generation Event Listener
@@ -40,6 +42,24 @@ public class VaultHuntersAPMod {
                 this,
                 (data) -> VaultChestEventListener.onChestGeneration(data)
         );
+        iskallia.vault.core.event.CommonEvents.ARTIFACT_CHANCE.register(
+                this,
+                (data) -> {
+                    VaultHuntersManager manager = getManager();
+                    if (manager != null && manager.suppressesVaultArtifactRewards()) {
+                        data.setProbability(0.0F);
+                    }
+                }
+        );
+        iskallia.vault.core.event.CommonEvents.PLAYER_STAT.register(
+                this,
+                APBlessingManager::onPlayerStat
+        );
+        iskallia.vault.core.event.CommonEvents.MANA_MODIFY.register(
+                this,
+                APRingLinkManager::onManaModify
+        );
+        APBoonManager.registerModifierAndPatchPools();
 
         LOGGER.info("Registered Vault Chest event listener for AP checks");
 
@@ -71,23 +91,29 @@ public class VaultHuntersAPMod {
     public void onServerStarted(ServerStartedEvent event) {
         // Give the server to AP client so it can get players
         apClient.setServer(event.getServer());
+        APBoonManager.registerModifierAndPatchPools();
         LOGGER.info("Server started - AP client ready");
         LOGGER.info("Use /apconnect <host> <port> <slotName> to connect to AP");
         LOGGER.info("Example: /apconnect archipelago.gg 45624 Muffin");
+        LOGGER.info("AP auto-connect is disabled for server hosting; connect manually with /apconnect");
+    }
 
-        APConnectionConfig config = APConnectionConfig.load();
-        if (config.autoConnect && config.hasConnectionInfo() && !apClient.isConnected()) {
-            LOGGER.info("Auto-connecting to AP server {}:{} as {}",
-                    config.host, config.port, config.slotName);
-            apClient.connect(config.host, config.port, config.slotName, config.password)
-                    .whenComplete((unused, throwable) -> {
-                        if (throwable != null) {
-                            String reason = throwable.getMessage() != null
-                                    ? throwable.getMessage()
-                                    : throwable.getClass().getSimpleName();
-                            LOGGER.warn("Auto-connect failed: {}", reason);
-                        }
-                    });
+    public static void tryAutoConnectIfPlayersOnline(MinecraftServer server) {
+        if (apClient == null || server == null) {
+            return;
+        }
+
+        apClient.setServer(server);
+    }
+
+    public static void disconnectFromAPIfNoPlayersOnline(MinecraftServer server) {
+        if (apClient == null || server == null || !server.getPlayerList().getPlayers().isEmpty()) {
+            return;
+        }
+
+        if (apClient.isConnectionActive()) {
+            LOGGER.info("No players online - disconnecting from AP server");
+            apClient.disconnect("No Minecraft players online");
         }
     }
 

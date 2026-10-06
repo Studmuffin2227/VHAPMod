@@ -1,6 +1,9 @@
 package studmuffin.vhapmod;
 
 import studmuffin.vhapmod.network.CheckTableSelectSphereMessage;
+import studmuffin.vhapmod.network.CheckTableSelectTabMessage;
+import studmuffin.vhapmod.network.CheckTableHintUsefulMessage;
+import studmuffin.vhapmod.network.ArchipelaPouchActionMessage;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.network.NetworkRegistry;
 import net.minecraftforge.network.simple.SimpleChannel;
@@ -37,6 +40,27 @@ public class ModNetwork {
                 CheckTableSelectSphereMessage::encode,
                 CheckTableSelectSphereMessage::decode,
                 CheckTableSelectSphereMessage::handle
+        );
+        CHANNEL.registerMessage(
+                id++,
+                CheckTableSelectTabMessage.class,
+                CheckTableSelectTabMessage::encode,
+                CheckTableSelectTabMessage::decode,
+                CheckTableSelectTabMessage::handle
+        );
+        CHANNEL.registerMessage(
+                id++,
+                CheckTableHintUsefulMessage.class,
+                CheckTableHintUsefulMessage::encode,
+                CheckTableHintUsefulMessage::decode,
+                CheckTableHintUsefulMessage::handle
+        );
+        CHANNEL.registerMessage(
+                id++,
+                ArchipelaPouchActionMessage.class,
+                ArchipelaPouchActionMessage::encode,
+                ArchipelaPouchActionMessage::decode,
+                ArchipelaPouchActionMessage::handle
         );
     }
 }

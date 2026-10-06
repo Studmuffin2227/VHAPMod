@@ -13,6 +13,7 @@ import java.util.HashSet;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 public class ReceivedItemsData extends SavedData {
 
@@ -21,6 +22,8 @@ public class ReceivedItemsData extends SavedData {
 
     private Set<String> processedItems = new HashSet<>();
     private List<PendingItem> pendingItems = new ArrayList<>();
+    private List<PendingPlayerItem> pendingPlayerItems = new ArrayList<>();
+    private Set<UUID> knownPlayers = new HashSet<>();
     private String connectionSignature = "";
 
     public ReceivedItemsData() {
@@ -43,6 +46,28 @@ public class ReceivedItemsData extends SavedData {
                     entry.getInt("Flags")
             ));
         }
+        ListTag pendingPlayers = tag.getList("PendingPlayerItems", 10);
+        for (int i = 0; i < pendingPlayers.size(); i++) {
+            CompoundTag entry = pendingPlayers.getCompound(i);
+            if (!entry.hasUUID("PlayerId")) {
+                continue;
+            }
+            pendingPlayerItems.add(new PendingPlayerItem(
+                    entry.getUUID("PlayerId"),
+                    entry.getString("Key"),
+                    entry.getLong("ItemId"),
+                    entry.getLong("LocationId"),
+                    entry.getInt("SendingPlayer"),
+                    entry.getInt("Flags")
+            ));
+        }
+        ListTag players = tag.getList("KnownPlayers", 10);
+        for (int i = 0; i < players.size(); i++) {
+            CompoundTag entry = players.getCompound(i);
+            if (entry.hasUUID("PlayerId")) {
+                knownPlayers.add(entry.getUUID("PlayerId"));
+            }
+        }
         LOGGER.info("Loaded {} processed items from disk", processedItems.size());
     }
 
@@ -64,6 +89,25 @@ public class ReceivedItemsData extends SavedData {
             pending.add(entry);
         }
         tag.put("PendingItems", pending);
+        ListTag pendingPlayers = new ListTag();
+        for (PendingPlayerItem item : pendingPlayerItems) {
+            CompoundTag entry = new CompoundTag();
+            entry.putUUID("PlayerId", item.playerId);
+            entry.putString("Key", item.uniqueKey);
+            entry.putLong("ItemId", item.itemId);
+            entry.putLong("LocationId", item.locationId);
+            entry.putInt("SendingPlayer", item.sendingPlayer);
+            entry.putInt("Flags", item.flags);
+            pendingPlayers.add(entry);
+        }
+        tag.put("PendingPlayerItems", pendingPlayers);
+        ListTag players = new ListTag();
+        for (UUID playerId : knownPlayers) {
+            CompoundTag entry = new CompoundTag();
+            entry.putUUID("PlayerId", playerId);
+            players.add(entry);
+        }
+        tag.put("KnownPlayers", players);
         tag.putString("ConnectionSignature", connectionSignature);
         LOGGER.info("Saved {} processed items to disk", processedItems.size());
         return tag;
@@ -96,6 +140,47 @@ public class ReceivedItemsData extends SavedData {
         return new ArrayList<>(pendingItems);
     }
 
+    public void addKnownPlayer(UUID playerId) {
+        if (playerId != null && knownPlayers.add(playerId)) {
+            setDirty();
+        }
+    }
+
+    public Set<UUID> getKnownPlayers() {
+        return new HashSet<>(knownPlayers);
+    }
+
+    public void addPendingForPlayer(UUID playerId, String uniqueKey, long itemId, long locationId, int sendingPlayer, int flags) {
+        if (playerId == null || hasProcessed(uniqueKey)) {
+            return;
+        }
+        for (PendingPlayerItem item : pendingPlayerItems) {
+            if (item.playerId.equals(playerId) && item.uniqueKey.equals(uniqueKey)) {
+                return;
+            }
+        }
+        pendingPlayerItems.add(new PendingPlayerItem(playerId, uniqueKey, itemId, locationId, sendingPlayer, flags));
+        setDirty();
+    }
+
+    public List<PendingPlayerItem> getPendingItemsForPlayer(UUID playerId) {
+        List<PendingPlayerItem> result = new ArrayList<>();
+        if (playerId == null) {
+            return result;
+        }
+        for (PendingPlayerItem item : pendingPlayerItems) {
+            if (item.playerId.equals(playerId)) {
+                result.add(item);
+            }
+        }
+        return result;
+    }
+
+    public void removePendingForPlayer(UUID playerId, String uniqueKey) {
+        pendingPlayerItems.removeIf(item -> item.playerId.equals(playerId) && item.uniqueKey.equals(uniqueKey));
+        setDirty();
+    }
+
     public void removePending(String uniqueKey) {
         pendingItems.removeIf(item -> item.uniqueKey.equals(uniqueKey));
         setDirty();
@@ -104,25 +189,28 @@ public class ReceivedItemsData extends SavedData {
     public void clear() {
         processedItems.clear();
         pendingItems.clear();
+        pendingPlayerItems.clear();
         setDirty();
     }
 
-    public void syncConnectionSignature(String newSignature) {
+    public boolean syncConnectionSignature(String newSignature) {
         String signature = newSignature == null ? "" : newSignature;
         if (signature.isBlank()) {
-            return;
+            return false;
         }
         if (connectionSignature.isBlank()) {
             connectionSignature = signature;
             clear();
             LOGGER.info("Initialized AP received-item cache for {}; cleared old unscoped entries", signature);
-            return;
+            return false;
         }
         if (!connectionSignature.equals(signature)) {
             LOGGER.info("AP connection changed from {} to {}; clearing received-item cache", connectionSignature, signature);
             connectionSignature = signature;
             clear();
+            return true;
         }
+        return false;
     }
 
     public int getProcessedCount() {
@@ -162,6 +250,15 @@ public class ReceivedItemsData extends SavedData {
             this.locationId = locationId;
             this.sendingPlayer = sendingPlayer;
             this.flags = flags;
+        }
+    }
+
+    public static class PendingPlayerItem extends PendingItem {
+        public final UUID playerId;
+
+        public PendingPlayerItem(UUID playerId, String uniqueKey, long itemId, long locationId, int sendingPlayer, int flags) {
+            super(uniqueKey, itemId, locationId, sendingPlayer, flags);
+            this.playerId = playerId;
         }
     }
 }

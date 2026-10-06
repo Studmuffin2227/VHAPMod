@@ -4,7 +4,7 @@ license="All Rights Reserved"
 
 [[mods]]
 modId="apvaulthuntersmod"
-version="1.0.0"
+version="1.2.6"
 displayName="AP Vault Hunters"
 authors="StudMuffin"
 description='''Archipelago integration for Vault Hunters'''

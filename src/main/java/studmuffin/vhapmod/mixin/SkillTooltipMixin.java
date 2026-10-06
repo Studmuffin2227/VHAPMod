@@ -1,6 +1,7 @@
 package studmuffin.vhapmod.mixin;
 
 import studmuffin.vhapmod.APSkillLockManager;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import iskallia.vault.client.gui.overlay.VaultBarOverlay;
 import iskallia.vault.client.gui.screen.player.legacy.widget.SkillWidget;
@@ -11,6 +12,7 @@ import iskallia.vault.skill.tree.ExpertiseTree;
 import iskallia.vault.skill.tree.SkillTree;
 import iskallia.vault.skill.tree.TalentTree;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.gui.GuiComponent;
 import net.minecraft.network.chat.TextComponent;
 import net.minecraft.util.FormattedCharSequence;
 import org.spongepowered.asm.mixin.Mixin;
@@ -19,6 +21,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.awt.Rectangle;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -36,6 +39,9 @@ public abstract class SkillTooltipMixin {
 
     @Shadow
     public abstract boolean m_5953_(double mouseX, double mouseY);
+
+    @Shadow
+    public abstract Rectangle getClickableBounds();
 
     @Inject(method = "renderHover", at = @At("HEAD"), cancellable = true, remap = false, require = 0)
     private void addAPTooltip(PoseStack poseStack, int mouseX, int mouseY, float partialTick, CallbackInfo ci) {
@@ -93,6 +99,28 @@ public abstract class SkillTooltipMixin {
         ci.cancel();
     }
 
+    @Inject(method = "renderIcon", at = @At("HEAD"), remap = false, require = 0)
+    private void grayLockedIcon(PoseStack poseStack, int x, int y, float partialTick, CallbackInfo ci) {
+        if (isLockedByArchipelago()) {
+            RenderSystem.setShaderColor(0.35F, 0.35F, 0.35F, 1.0F);
+        }
+    }
+
+    @Inject(method = "renderIcon", at = @At("RETURN"), remap = false, require = 0)
+    private void resetIconColor(PoseStack poseStack, int x, int y, float partialTick, CallbackInfo ci) {
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+    }
+
+    @Inject(method = "renderWidget", at = @At("RETURN"), remap = false, require = 0)
+    private void overlayLockedIcon(PoseStack poseStack, Rectangle containerBounds, int mouseX, int mouseY, int containerMouseX, int containerMouseY, float partialTick, List<Runnable> postContainerRender, CallbackInfo ci) {
+        if (!isLockedByArchipelago()) {
+            return;
+        }
+
+        Rectangle bounds = getClickableBounds();
+        GuiComponent.fill(poseStack, bounds.x, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height, 0xAA202020);
+    }
+
     private boolean isLockedByArchipelago() {
         // Use skill ID instead of display name for more reliable matching
         String skillId = this.skill.getId();
@@ -107,7 +135,7 @@ public abstract class SkillTooltipMixin {
             isLocked = !APSkillLockManager.isSkillUnlockedClient(skillId);
         }
 
-        org.apache.logging.log4j.LogManager.getLogger().info(
+        org.apache.logging.log4j.LogManager.getLogger().debug(
             "[SkillTooltip] Checking lock for '{}' (ID: '{}') - Locked: {}",
             skillName, skillId, isLocked
         );

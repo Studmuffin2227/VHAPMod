@@ -16,6 +16,8 @@ public class APConnectionConfig {
     public String slotName = "";
     public String password = "";
     public boolean autoConnect = false;
+    public String targetPlayerUuid = "";
+    public String fillerRecipientMode = "single";
 
     public static APConnectionConfig load() {
         File file = new File(CONFIG_FILE);

@@ -166,18 +166,19 @@ public class VHSkillEnforcer {
                         String name = (String) getName.invoke(skill);
 
                         if (name != null && !name.isEmpty()) {
+                            String lookupName = getUnlockLookupName(skill, name, isAbility);
                             String normalized = isAbility
-                                    ? APSkillLockManager.canonicalSkillKey(name)
+                                    ? APSkillLockManager.canonicalSkillKey(lookupName)
                                     : APSkillLockManager.canonicalTalentKey(name);
 
-                            // Pass RAW name - APSkillLockManager will normalize it
+                            // Ability display names can differ from stable VH IDs across versions.
                             boolean allowed = isAbility
-                                    ? APSkillLockManager.isSkillUnlockedSilent(player, name)
+                                    ? APSkillLockManager.isSkillUnlockedSilent(player, lookupName)
                                     : APSkillLockManager.isTalentUnlockedSilent(player, name);
 
                             if (!allowed) {
-                                LOGGER.debug("Unauthorized {} detected: raw='{}' normalized='{}' UUID={}",
-                                        isAbility ? "skill" : "talent", name, normalized, player.getUUID());
+                                LOGGER.debug("Unauthorized {} detected: raw='{}' lookup='{}' normalized='{}' UUID={}",
+                                        isAbility ? "skill" : "talent", name, lookupName, normalized, player.getUUID());
                                 LOGGER.debug("Unlocked talents in storage: {}", APSkillLockManager.getUnlockedTalents(player));
                             }
 
@@ -196,8 +197,9 @@ public class VHSkillEnforcer {
             for (Object skill : toRemove) {
                 Method getName = skill.getClass().getMethod("getName");
                 String name = (String) getName.invoke(skill);
+                String lookupName = getUnlockLookupName(skill, name, isAbility);
                 String normalized = isAbility
-                        ? APSkillLockManager.canonicalSkillKey(name)
+                        ? APSkillLockManager.canonicalSkillKey(lookupName)
                         : APSkillLockManager.canonicalTalentKey(name);
 
                 if (!warned.contains(normalized)) {
@@ -269,6 +271,21 @@ public class VHSkillEnforcer {
         }
     }
 
+    private static String getUnlockLookupName(Object skill, String fallbackName, boolean isAbility) {
+        if (!isAbility) {
+            return fallbackName;
+        }
+        try {
+            Method getId = skill.getClass().getMethod("getId");
+            Object id = getId.invoke(skill);
+            if (id instanceof String skillId && !skillId.isBlank()) {
+                return skillId;
+            }
+        } catch (Exception ignored) {
+        }
+        return fallbackName;
+    }
+
     private static boolean resetSelectedSpecialization(Object skillTree, Object specializationSkill, ServerPlayer player) {
         try {
             Method getTargetId = specializationSkill.getClass().getMethod("getId");
@@ -293,11 +310,10 @@ public class VHSkillEnforcer {
                     continue;
                 }
 
-                Method resetSpecialization = parent.getClass().getMethod(
-                        "resetSpecialization",
-                        Class.forName("iskallia.vault.skill.base.SkillContext")
-                );
-                resetSpecialization.invoke(parent, context);
+                Object base = parent.getClass().getMethod("getSpecialization", int.class).invoke(parent, 0);
+                if (!restoreBaseSpecialization(parent, selected, base, context)) {
+                    return false;
+                }
 
                 try {
                     Method sync = skillTree.getClass().getMethod(
@@ -316,6 +332,74 @@ public class VHSkillEnforcer {
             LOGGER.warn("Failed to reset selected specialization only: {}", e.getMessage());
         }
         return false;
+    }
+
+    private static boolean restoreBaseSpecialization(Object parent, Object selected, Object base, Object context) {
+        try {
+            int selectedTier = getRawTier(selected);
+            if (context != null) {
+                invokeOptional(selected, "onRemove", context);
+            }
+            setRawTier(selected, 0);
+            setRawTier(base, selectedTier);
+
+            Field index = findField(parent.getClass(), "index");
+            if (index == null) {
+                return false;
+            }
+            index.setAccessible(true);
+            index.setInt(parent, 0);
+
+            if (context != null) {
+                invokeOptional(base, "onAdd", context);
+            }
+            return true;
+        } catch (Exception e) {
+            LOGGER.warn("Failed to restore base specialization without respec: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    private static int getRawTier(Object skill) throws IllegalAccessException {
+        Field tier = findField(skill.getClass(), "tier");
+        if (tier == null) {
+            return 0;
+        }
+        tier.setAccessible(true);
+        return tier.getInt(skill);
+    }
+
+    private static void setRawTier(Object skill, int value) throws IllegalAccessException {
+        Field tier = findField(skill.getClass(), "tier");
+        if (tier != null) {
+            tier.setAccessible(true);
+            tier.setInt(skill, value);
+        }
+        Field bonusTier = findField(skill.getClass(), "bonusTier");
+        if (bonusTier != null) {
+            bonusTier.setAccessible(true);
+            bonusTier.setInt(skill, 0);
+        }
+    }
+
+    private static void invokeOptional(Object target, String methodName, Object argument) {
+        try {
+            Method method = target.getClass().getMethod(methodName, argument.getClass());
+            method.invoke(target, argument);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static Field findField(Class<?> type, String name) {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                return current.getDeclaredField(name);
+            } catch (NoSuchFieldException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        return null;
     }
 
 

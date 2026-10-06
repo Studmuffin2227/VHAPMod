@@ -28,6 +28,7 @@ public class APSkillLockManager {
     private static final Map<UUID, Set<String>> unlockedMods = new HashMap<>();
     private static final Map<String, String> SKILL_ALIASES = createSkillAliases();
     private static final Map<String, String> TALENT_ALIASES = createTalentAliases();
+    private static final Map<String, String> EXPERTISE_ALIASES = createExpertiseAliases();
     private static final Map<String, String> MOD_ALIASES = createModAliases();
     private static boolean lockSpecializations = true;
 
@@ -309,7 +310,7 @@ public class APSkillLockManager {
     }
 
     private static String normalizeExpertiseName(String name) {
-        return normalizeName("vhexpertise:", name, null);
+        return normalizeName("vhexpertise:", name, EXPERTISE_ALIASES);
     }
 
     private static String normalizeModName(String name) {
@@ -332,9 +333,17 @@ public class APSkillLockManager {
         }
 
         String normalized = name.trim().toLowerCase(Locale.ROOT);
-        int prefixSeparator = normalized.indexOf(':');
-        if (prefixSeparator >= 0) {
-            normalized = normalized.substring(prefixSeparator + 1);
+        String[] prefixes = {
+                "vhskill:", "vhtalent:", "vhexpertise:", "vhmod:",
+                "skill unlock:", "talent unlock:", "specialization unlock:",
+                "expertise unlock:", "mod unlock:", "skill:", "talent:",
+                "expertise:", "mod:"
+        };
+        for (String prefix : prefixes) {
+            if (normalized.startsWith(prefix)) {
+                normalized = normalized.substring(prefix.length());
+                break;
+            }
         }
 
         normalized = normalized
@@ -350,25 +359,24 @@ public class APSkillLockManager {
 
     private static Map<String, String> createSkillAliases() {
         Map<String, String> aliases = new HashMap<>();
-        aliases.put("chain_lightning", "lightning_strike");
-        aliases.put("chain_lightning_base", "lightning_strike");
-        aliases.put("grenade", "chaos_cube");
-        aliases.put("grenade_base", "chaos_cube");
-        aliases.put("totem", "rejuvenation_totem");
-        aliases.put("totem_base", "rejuvenation_totem");
-        aliases.put("totem_rejuv", "rejuvenation_totem");
+        aliases.put("chain_lightning_base", "chain_lightning");
+        aliases.put("lightning_strike", "chain_lightning");
+        aliases.put("grenade_base", "grenade");
+        aliases.put("chaos_cube", "grenade");
+        aliases.put("totem_base", "totem");
+        aliases.put("rejuvenation_totem", "totem");
+        aliases.put("totem_rejuv", "totem");
         aliases.put("sa_thunder", "storm_arrow");
-        aliases.put("lightning_strike", "lightning_strike");
-        aliases.put("chaos_cube", "chaos_cube");
         aliases.put("nova_base", "nova");
+        aliases.put("execute_base", "execute");
         aliases.put("fireball_base", "fireball");
         aliases.put("javelin_base", "javelin");
         aliases.put("stonefall_base", "stonefall");
         aliases.put("ice_bolt_base", "ice_bolt");
         aliases.put("implode_base", "implode");
         aliases.put("mana_shield_implode", "implode");
-        aliases.put("shield_bash_base", "shield_bash");
-        aliases.put("retribution", "shield_bash");
+        aliases.put("shield_bash_base", "retribution");
+        aliases.put("retribution_base", "retribution");
         aliases.put("arcane_base", "arcane");
         aliases.put("earthquake_base", "earthquake");
         aliases.put("dash_base", "dash");
@@ -379,13 +387,14 @@ public class APSkillLockManager {
         aliases.put("shell_base", "shell");
         aliases.put("taunt_base", "taunt");
         aliases.put("heal_base", "heal");
-        aliases.put("angel_base", "angel");
         aliases.put("empower_base", "empower");
         aliases.put("hunter_base", "hunter");
+        aliases.put("farmer_base", "farmer");
         aliases.put("smite_base", "smite");
         aliases.put("storm_arrow_base", "storm_arrow");
         aliases.put("battle_cry_base", "battle_cry");
         aliases.put("mana_shield_base", "mana_shield");
+        aliases.put("necromancy_base", "necromancy");
 
         aliases.put("heal_group", "heal_group");
         aliases.put("heal_aid", "heal_group");
@@ -428,8 +437,8 @@ public class APSkillLockManager {
         aliases.put("javelin_sight", "hunter_javelin");
         aliases.put("hunter_javelin", "hunter_javelin");
         aliases.put("mana_barrier", "mana_barrier");
-        aliases.put("mana_shield_retribution", "retribution");
-        aliases.put("shield_bash_retribution", "retribution");
+        aliases.put("mana_shield_retribution", "shield_bash");
+        aliases.put("shield_bash_retribution", "shield_bash");
         aliases.put("retribution", "retribution");
         aliases.put("implode_life_tap", "implode_life_tap");
         aliases.put("mana_implode", "implode");
@@ -489,11 +498,12 @@ public class APSkillLockManager {
     }
 
     private static final Set<String> AP_SKILL_KEYS = Set.of(
-            "nova", "fireball", "javelin", "stonefall", "ice_bolt", "implode",
-            "shield_bash", "arcane", "earthquake", "lightning_strike", "dash",
-            "vein_miner", "ghost_walk", "rampage", "mega_jump", "shell", "taunt",
-            "heal", "angel", "empower", "hunter", "smite", "storm_arrow",
-            "battle_cry", "rejuvenation_totem", "mana_shield", "chaos_cube"
+            "heal", "dash", "nova", "execute", "ghost_walk", "mega_jump",
+            "rampage", "smite", "empower", "vein_miner", "hunter", "farmer",
+            "mana_shield", "retribution", "implode", "taunt", "stonefall",
+            "totem", "javelin", "shell", "fireball", "storm_arrow",
+            "battle_cry", "ice_bolt", "arcane", "earthquake",
+            "chain_lightning", "grenade"
     );
 
     private static final Set<String> SPECIALIZATION_KEYS = Set.of(
@@ -506,7 +516,7 @@ public class APSkillLockManager {
             "vhskill:empower_slowness_aura", "vhskill:vein_miner_fortune",
             "vhskill:vein_miner_durability", "vhskill:vein_miner_void",
             "vhskill:hunter_javelin", "vhskill:mana_barrier",
-            "vhskill:retribution", "vhskill:implode_life_tap",
+            "vhskill:shield_bash", "vhskill:implode_life_tap",
             "vhskill:taunt_repel", "vhskill:taunt_charm", "vhskill:heros_landing",
             "vhskill:coldsnap", "vhskill:wrath_totem",
             "vhskill:spirit_totem", "vhskill:hatred_totem",
@@ -521,13 +531,32 @@ public class APSkillLockManager {
 
     private static Map<String, String> createTalentAliases() {
         Map<String, String> aliases = new HashMap<>();
-        aliases.put("stone_skin", "stoneskin");
-        aliases.put("lightning_stun", "lightning_finesse");
-        aliases.put("lightning_damage", "lightning_mastery");
-        aliases.put("javelin_throw_power", "throw_power");
-        aliases.put("javelin_damage", "damage");
-        aliases.put("javelin_conduct", "conduct");
-        aliases.put("javelin_frugal", "ethereal");
+        aliases.put("might", "strength");
+        aliases.put("frozen_impact", "blizzard");
+        aliases.put("life_leech", "life_steal");
+        aliases.put("greater_life_leech", "life_steal_ii");
+        aliases.put("greater_fatal_strike", "fatal_strike_ii");
+        aliases.put("greater_mana_steal", "mana_steal_ii");
+        aliases.put("lightning_finesse", "lightning_damage");
+        aliases.put("lightning_mastery", "lightning_stun");
+        aliases.put("frost_bite", "frostbite");
+        aliases.put("twerker", "farmer_twerker");
+        aliases.put("greater_might", "might_ii");
+        aliases.put("greater_intelligence", "intelligence_ii");
+        aliases.put("greater_haste", "haste_ii");
+        aliases.put("greater_speed", "speed_ii");
+        aliases.put("greater_prudent", "prudent_ii");
+        aliases.put("conduct", "javelin_conduct");
+        aliases.put("javelin_ethereal", "javelin_frugal");
+        aliases.put("javelin_enhancements", "javelin");
+        return aliases;
+    }
+
+    private static Map<String, String> createExpertiseAliases() {
+        Map<String, String> aliases = new HashMap<>();
+        aliases.put("crystalmancer", "mystic");
+        aliases.put("companions_loyalty", "companion_loyalty");
+        aliases.put("companion_sleepy", "companion_loyalty");
         return aliases;
     }
 
@@ -536,23 +565,37 @@ public class APSkillLockManager {
         LOGGER.info("AP specialization locking: {}", enabled ? "enabled" : "disabled");
     }
 
+    public static boolean areSpecializationsLockedClient() {
+        return lockSpecializations;
+    }
+
+    public static void setUnlockChecksEnabled(boolean enabled) {
+        LOGGER.info("AP unlock checks: {}", enabled ? "enabled" : "disabled");
+    }
+
     private static Map<String, String> createModAliases() {
         Map<String, String> aliases = new HashMap<>();
         aliases.put("colossal_chest", "colossal_chests");
         aliases.put("stackupgrading", "stack_upgrading");
         aliases.put("autorefill", "auto_refill");
         aliases.put("autofeeding", "auto_feeding");
+        aliases.put("mekanismqio", "mekanism_qio");
         aliases.put("torch_master", "torchmaster");
         aliases.put("filters", "vault_filters");
         aliases.put("potion", "potions");
         aliases.put("mixture", "mixtures");
         aliases.put("markers", "map_markers");
         aliases.put("pretty_pipes", "pipez");
+        aliases.put("augmentstation", "augment_station");
         return aliases;
     }
 
     public static Set<String> getUnlockedTalents(ServerPlayer player) {
         return unlockedTalents.getOrDefault(player.getUUID(), new HashSet<>());
+    }
+
+    public static Set<String> getUnlockedSkills(ServerPlayer player) {
+        return unlockedSkills.getOrDefault(player.getUUID(), new HashSet<>());
     }
 
     public static Set<String> getUnlockedMods(ServerPlayer player) {

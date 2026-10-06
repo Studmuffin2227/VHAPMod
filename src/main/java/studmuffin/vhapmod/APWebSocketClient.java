@@ -1,6 +1,7 @@
 package studmuffin.vhapmod;
 
 import com.google.gson.*;
+import iskallia.vault.world.data.DiscoveredArtifactsData;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.TextComponent;
@@ -44,14 +45,28 @@ public class APWebSocketClient implements WebSocket.Listener {
     private int slot = 0;
     private String roomSeedName = "";
     private boolean connected = false;
+    private boolean connecting = false;
     private UUID targetPlayerId;
-    private boolean skillChecksEnabled = false;
+    private boolean checksBehindSkillsEnabled = false;
+    private boolean autoLearnSkillsEnabled = false;
+    private boolean deathLinkEnabled = false;
+    private boolean deathLinkVaultsOnly = false;
+    private boolean deathLinkVaultCurse = false;
+    private boolean ringLinkEnabled = false;
+    private int ringLinkSource = new Random().nextInt();
+    private double pendingRingLinkAmount = 0.0D;
+    private int suppressNextDeathLinks = 0;
+    private double lastReceivedDeathLinkTime = -1.0D;
+    private String shopCheckRewardDisplay = "all";
+    private String bountyCheckRewardDisplay = "all";
+    private String fillerRecipientMode = "single";
 
     // Game state
     private Set<Long> checkedLocations = new HashSet<>();
     private Set<String> processedItems = new HashSet<>();
-    private int goalLevel = 100;
+    private int goalLevel = 20;
     private String goalType = "level";
+    private int artifactRequirement = 25;
     private final Map<Integer, String> playerNames = new HashMap<>();
     private final Map<Integer, String> playerGames = new HashMap<>();
     private final Map<String, Map<Long, String>> itemNamesByGame = new HashMap<>();
@@ -63,33 +78,80 @@ public class APWebSocketClient implements WebSocket.Listener {
     private final Map<Long, UUID> scoutTargetsByLocation = new HashMap<>();
     private final List<JsonObject> pendingItemMessages = new ArrayList<>();
     private boolean requestedDataPackage = false;
+    private static final Map<Long, String[]> PROGRESSIVE_TALENTS = Map.ofEntries(
+            Map.entry(43129L, new String[]{"vhtalent:depleted", "vhtalent:methodical", "vhtalent:blood_rush"}),
+            Map.entry(43121L, new String[]{"vhtalent:lightning_damage", "vhtalent:lightning_stun"}),
+            Map.entry(43130L, new String[]{"vhtalent:fatal_strike", "vhtalent:fatal_strike_ii"}),
+            Map.entry(43134L, new String[]{"vhtalent:mana_steal", "vhtalent:mana_steal_ii"}),
+            Map.entry(43136L, new String[]{"vhtalent:life_steal", "vhtalent:life_steal_ii"}),
+            Map.entry(43118L, new String[]{"vhtalent:sorcery", "vhtalent:arcana"}),
+            Map.entry(43103L, new String[]{"vhtalent:speed", "vhtalent:speed_ii", "vhtalent:blazing"}),
+            Map.entry(43100L, new String[]{"vhtalent:intelligence", "vhtalent:intelligence_ii"}),
+            Map.entry(43101L, new String[]{"vhtalent:haste", "vhtalent:haste_ii"}),
+            Map.entry(43140L, new String[]{"vhtalent:prudent", "vhtalent:prudent_ii"})
+    );
+    private static final Map<String, String> UNLOCK_DISPLAY_NAMES = Map.ofEntries(
+            Map.entry("vhskill:chain_lightning", "Lightning Strike"),
+            Map.entry("vhskill:grenade", "Chaos Cube"),
+            Map.entry("vhskill:heal_group", "Group Heal"),
+            Map.entry("vhskill:dash_damage", "Bullet"),
+            Map.entry("vhskill:nova_slow", "Frost Nova"),
+            Map.entry("vhskill:nova_dot", "Poison Nova"),
+            Map.entry("vhskill:ghost_walk_spirit", "Spirit Walk"),
+            Map.entry("vhskill:rampage_leech", "Vampiric"),
+            Map.entry("vhskill:rampage_chain", "Chaining"),
+            Map.entry("vhskill:smite_archon", "Archon"),
+            Map.entry("vhskill:empower_slowness_aura", "Entropic Bind"),
+            Map.entry("vhskill:vein_miner_durability", "Finesse Miner"),
+            Map.entry("vhskill:vein_miner_void", "Void Miner"),
+            Map.entry("vhskill:shield_bash", "Shield Bash"),
+            Map.entry("vhskill:implode_life_tap", "Life Tap"),
+            Map.entry("vhskill:taunt_repel", "Fear"),
+            Map.entry("vhskill:taunt_charm", "Charm"),
+            Map.entry("vhskill:storm_arrow_blizzard", "Blizzard Arrow (Legacy)"),
+            Map.entry("vhskill:ice_bolt_blast", "Glacial Blast"),
+            Map.entry("vhskill:arcane_rail", "Rail"),
+            Map.entry("vhskill:earthquake_landmine", "Landmine"),
+            Map.entry("vhtalent:strength", "Might"),
+            Map.entry("vhtalent:lightning_damage", "Lightning Finesse"),
+            Map.entry("vhtalent:lightning_stun", "Lightning Mastery"),
+            Map.entry("vhtalent:fatal_strike_ii", "Greater Fatal Strike"),
+            Map.entry("vhtalent:mana_steal_ii", "Greater Mana Steal"),
+            Map.entry("vhtalent:life_steal", "Life Leech"),
+            Map.entry("vhtalent:life_steal_ii", "Greater Life Leech"),
+            Map.entry("vhtalent:blizzard", "Frozen Impact"),
+            Map.entry("vhtalent:frostbite", "Frost Bite"),
+            Map.entry("vhtalent:hunters_instinct", "Hunter's Instinct"),
+            Map.entry("vhtalent:farmer_twerker", "Twerker"),
+            Map.entry("vhtalent:might_ii", "Greater Might"),
+            Map.entry("vhtalent:intelligence_ii", "Greater Intelligence"),
+            Map.entry("vhtalent:haste_ii", "Greater Haste"),
+            Map.entry("vhtalent:speed_ii", "Greater Speed"),
+            Map.entry("vhtalent:prudent_ii", "Greater Prudent")
+    );
     private static final String[] FILLER_REWARD_NAMES = {
-            "Cooked Vault Steak",
-            "Chromatic Iron Ingot",
+            "Cooked Vault Steaks",
+            "Chromatic Iron Ingots",
             "Shulker Box",
-            "Bottle O' Enchanting",
-            "Emerald",
-            "Ender Pearl",
+            "Bottles O' Enchanting",
+            "Emeralds",
+            "Ender Pearls",
             "Backpack",
-            "Pickup Backpack",
-            "Void Backpack",
-            "Bounty Pearl",
-            "Chromatic Iron Ingot Bundle",
-            "Gemstone",
-            "Chromatic Steel Ingot",
+            "Bounty Pearls",
+            "Gemstones",
+            "Chromatic Steel Ingots",
             "Vault Gold",
-            "Vault Plating",
-            "Diamond",
-            "Vault Bronze Stack",
+            "Vault Silver",
+            "Vault Bronze Cache",
+            "Diamonds",
             "Vault Alloy",
             "Wild Focus",
-            "Vault Plating Bundle",
-            "Vault Bronze Bundle",
+            "Vault Platings",
             "Vault Scrap",
             "Vault Gold Cache",
             "Vault Diamond",
             "Hamburger",
-            "Seal of the Scout",
+            "Blank Seal",
             "Silver Scrap",
             "Soul Shard",
             "Vault Helmet",
@@ -98,30 +160,31 @@ public class APWebSocketClient implements WebSocket.Listener {
             "Vault Boots",
             "Mod Box",
             "Diamond Cache",
-            "Seal of the Sage",
             "Phoenix Capstone",
-            "Catalyst Fragment",
-            "Inscription Piece",
+            "Catalyst Fragments",
+            "Inscription Pieces",
             "Unidentified Artifact",
-            "Vault Gold Pouch",
             "Vault Trinket",
             "Vault Diamond Cache",
             "Vault Gold Hoard",
+            "Vault Silver Cache",
+            "Vault Silver Hoard",
             "POG",
             "Netherite Ingot",
             "Wardrobe",
             "Vault Bronze Hoard",
             "Echo Gem",
-            "Mod Box Bundle",
             "Sour Orange",
             "Bamboo",
-            "Unidentified Trinket",
             "Vault Gold Crate",
+            "Vault Silver Crate",
+            "Vault Bronze Crate",
             "Neuralizer",
             "Perfect Echo Gem",
             "Lost Bounty",
             "Ember",
-            "Omega POG"
+            "Omega POG",
+            "Blessing"
     };
 
     public APWebSocketClient(VaultHuntersManager manager) {
@@ -130,6 +193,8 @@ public class APWebSocketClient implements WebSocket.Listener {
 
     public void setServer(net.minecraft.server.MinecraftServer server) {
         this.server = server;
+        APConnectionConfig config = APConnectionConfig.load();
+        setFillerRecipientMode(config.fillerRecipientMode, false);
     }
 
     public void setTargetPlayer(ServerPlayer player) {
@@ -137,11 +202,68 @@ public class APWebSocketClient implements WebSocket.Listener {
         LOGGER.info("AP rewards will target Minecraft player {}", player.getGameProfile().getName());
     }
 
-    public boolean shouldCountQuestChecksFor(ServerPlayer player) {
+    public synchronized void claimTargetPlayerIfUnset(ServerPlayer player) {
         if (targetPlayerId != null) {
-            return player.getUUID().equals(targetPlayerId);
+            return;
+        }
+        setTargetPlayer(player);
+        APConnectionConfig config = APConnectionConfig.load();
+        config.targetPlayerUuid = player.getUUID().toString();
+        config.save();
+        LOGGER.info("Persisted {} as the AP target player for auto-connect", player.getGameProfile().getName());
+    }
+
+    public void setTargetPlayerId(String playerUuid) {
+        if (playerUuid == null || playerUuid.isBlank()) {
+            return;
+        }
+        try {
+            this.targetPlayerId = UUID.fromString(playerUuid);
+        } catch (IllegalArgumentException e) {
+            LOGGER.warn("Ignoring invalid configured AP target player UUID: {}", playerUuid);
+        }
+    }
+
+    public boolean shouldCountQuestChecksFor(ServerPlayer player) {
+        return player != null;
+    }
+
+    public boolean areSkillUnlockChecksEnabled() {
+        return checksBehindSkillsEnabled;
+    }
+
+    public String getFillerRecipientMode() {
+        return fillerRecipientMode;
+    }
+
+    public boolean setFillerRecipientMode(String mode) {
+        return setFillerRecipientMode(mode, true);
+    }
+
+    private boolean setFillerRecipientMode(String mode, boolean save) {
+        String normalized = normalizeFillerRecipientMode(mode);
+        if (normalized == null) {
+            return false;
+        }
+        fillerRecipientMode = normalized;
+        if (save) {
+            APConnectionConfig config = APConnectionConfig.load();
+            config.fillerRecipientMode = normalized;
+            config.save();
         }
         return true;
+    }
+
+    private String normalizeFillerRecipientMode(String mode) {
+        if (mode == null || mode.isBlank()) {
+            return "single";
+        }
+        return switch (mode.trim().toLowerCase(Locale.ROOT)) {
+            case "single", "target", "player" -> "single";
+            case "online" -> "online";
+            case "all", "offline" -> "all";
+            default -> null;
+        };
     }
 
     // ========== CONNECTION ==========
@@ -150,6 +272,13 @@ public class APWebSocketClient implements WebSocket.Listener {
         this.slotName = slotName;
         this.password = password;
         this.connected = false;
+        this.connecting = true;
+        this.requestedDataPackage = false;
+        this.ringLinkSource = new Random().nextInt();
+        this.pendingRingLinkAmount = 0.0D;
+        if (vhManager != null) {
+            vhManager.markSlotSettingsUnloaded();
+        }
 
         String uri = buildWebSocketUri(host, port);
         String fallbackUri = buildFallbackWebSocketUri(host, port, uri);
@@ -173,6 +302,10 @@ public class APWebSocketClient implements WebSocket.Listener {
         return client.newWebSocketBuilder()
                 .buildAsync(URI.create(uri), this)
                 .thenAccept(ws -> {
+                    if (!connecting) {
+                        ws.sendClose(WebSocket.NORMAL_CLOSURE, "Client disconnecting");
+                        return;
+                    }
                     this.webSocket = ws;
                     LOGGER.info("WebSocket connected, sending Connect packet");
                     sendConnect();
@@ -185,6 +318,7 @@ public class APWebSocketClient implements WebSocket.Listener {
         String reason = describe(cause);
         LOGGER.error("Failed to connect: {}", reason);
         this.connected = false;
+        this.connecting = false;
         broadcastStatusToPlayers("[AP] Connection failed: " + reason, ChatFormatting.RED);
         return CompletableFuture.failedFuture(cause);
     }
@@ -245,7 +379,14 @@ public class APWebSocketClient implements WebSocket.Listener {
         connectPacket.addProperty("items_handling", 7); // 0b111 = remote items
         connectPacket.addProperty("slot_data", true); // Request slot_data
         connectPacket.addProperty("password", password != null ? password : "");
-        connectPacket.add("tags", new JsonArray());
+        JsonArray tags = new JsonArray();
+        if (deathLinkEnabled) {
+            tags.add("DeathLink");
+        }
+        if (ringLinkEnabled) {
+            tags.add("RingLink");
+        }
+        connectPacket.add("tags", tags);
 
         JsonArray wrapper = new JsonArray();
         wrapper.add(connectPacket);
@@ -267,10 +408,19 @@ public class APWebSocketClient implements WebSocket.Listener {
         return connected && webSocket != null;
     }
 
+    public boolean isConnectionActive() {
+        return isConnected() || connecting;
+    }
+
     public void disconnect() {
+        disconnect("Client disconnecting");
+    }
+
+    public void disconnect(String reason) {
+        connected = false;
+        connecting = false;
         if (webSocket != null) {
-            webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "Client disconnecting");
-            connected = false;
+            webSocket.sendClose(WebSocket.NORMAL_CLOSURE, reason);
         }
     }
 
@@ -330,12 +480,17 @@ public class APWebSocketClient implements WebSocket.Listener {
     public void onError(WebSocket webSocket, Throwable error) {
         LOGGER.error("WebSocket error: {}", error.getMessage());
         connected = false;
+        connecting = false;
     }
 
     @Override
     public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
         LOGGER.info("WebSocket closed: {} - {}", statusCode, reason);
         connected = false;
+        connecting = false;
+        if (this.webSocket == webSocket) {
+            this.webSocket = null;
+        }
         return WebSocket.Listener.super.onClose(webSocket, statusCode, reason);
     }
 
@@ -359,6 +514,11 @@ public class APWebSocketClient implements WebSocket.Listener {
             case "LocationInfo":
                 handleLocationInfo(packet);
                 break;
+            case "RoomUpdate":
+                if (syncCheckedLocations(packet, false)) {
+                    refreshOpenCheckTables();
+                }
+                break;
             case "DataPackage":
                 handleDataPackage(packet);
                 break;
@@ -374,8 +534,11 @@ public class APWebSocketClient implements WebSocket.Listener {
             case "Retrieved":
             case "SetReply":
             case "Bounced":
-                // These are responses to Get/Set commands - ignore for now
-                LOGGER.debug("Received {}", cmd);
+                if ("Bounced".equals(cmd)) {
+                    handleBounced(packet);
+                } else {
+                    LOGGER.debug("Received {}", cmd);
+                }
                 break;
             default:
                 LOGGER.debug("Unhandled packet: {}", cmd);
@@ -415,6 +578,7 @@ public class APWebSocketClient implements WebSocket.Listener {
 
     private void handleConnected(JsonObject packet) {
         connected = true;
+        connecting = false;
 
         if (packet.has("slot")) {
             slot = packet.get("slot").getAsInt();
@@ -425,6 +589,8 @@ public class APWebSocketClient implements WebSocket.Listener {
         if (packet.has("team")) {
             team = packet.get("team").getAsInt();
         }
+
+        syncCheckedLocations(packet, true);
 
         LOGGER.info("Connected to AP as slot {} on team {}", slot, team);
         syncReceivedItemCacheScope();
@@ -442,7 +608,31 @@ public class APWebSocketClient implements WebSocket.Listener {
             if (slotData.has("goal_type")) {
                 goalType = slotData.get("goal_type").getAsString();
                 LOGGER.info("Goal type: {}", goalType);
+                vhManager.setGoalType(goalType);
             }
+
+            if (slotData.has("artifact_requirement")) {
+                artifactRequirement = Math.max(1, slotData.get("artifact_requirement").getAsInt());
+                LOGGER.info("Artifact requirement: {}", artifactRequirement);
+                vhManager.setArtifactRequirement(artifactRequirement);
+            }
+
+            if (slotData.has("level_cap_steps") && slotData.get("level_cap_steps").isJsonArray()) {
+                JsonArray values = slotData.getAsJsonArray("level_cap_steps");
+                int[] steps = new int[values.size()];
+                for (int i = 0; i < values.size(); i++) {
+                    steps[i] = values.get(i).getAsInt();
+                }
+                vhManager.setLevelCapSteps(steps);
+            }
+
+        deathLinkEnabled = slotData.has("death_link") && slotData.get("death_link").getAsBoolean();
+        deathLinkVaultsOnly = slotData.has("death_link_vaults_only") && slotData.get("death_link_vaults_only").getAsBoolean();
+        deathLinkVaultCurse = slotData.has("death_link_vault_curse") && slotData.get("death_link_vault_curse").getAsBoolean();
+        ringLinkEnabled = slotData.has("ring_link") && slotData.get("ring_link").getAsBoolean();
+        if (deathLinkEnabled || ringLinkEnabled) {
+            sendConnectUpdate();
+        }
 
             int questChecks = slotData.has("quest_check_count")
                     ? slotData.get("quest_check_count").getAsInt()
@@ -450,11 +640,29 @@ public class APWebSocketClient implements WebSocket.Listener {
             vhManager.setTotalQuestChecks(questChecks);
             LOGGER.info("Quest checks: {}", questChecks);
 
-            if (slotData.has("vault_chest_checks")) {
-                int chestChecks = slotData.get("vault_chest_checks").getAsInt();
-                vhManager.setTotalChestChecks(chestChecks);
-                LOGGER.info("Chest checks: {}", chestChecks);
+            int bountyChecks = slotData.has("bounty_check_count")
+                    ? slotData.get("bounty_check_count").getAsInt()
+                    : 0;
+            vhManager.setTotalBountyChecks(bountyChecks);
+            LOGGER.info("Bounty checks: {}", bountyChecks);
+
+            if (slotData.has("bounty_checks_per_progressive")) {
+                vhManager.setBountyChecksPerProgressive(slotData.get("bounty_checks_per_progressive").getAsInt());
             }
+
+            shopCheckRewardDisplay = readRewardDisplayMode(slotData, "display_shop_check_rewards", "all");
+            bountyCheckRewardDisplay = readRewardDisplayMode(slotData, "display_bounty_check_rewards", "all");
+            LOGGER.info("Shop check reward display: {}; Bounty check reward display: {}", shopCheckRewardDisplay, bountyCheckRewardDisplay);
+
+            int shopLevel = slotData.has("progression_goal_level")
+                    ? slotData.get("progression_goal_level").getAsInt()
+                    : slotData.has("max_shop_level") ? slotData.get("max_shop_level").getAsInt() : goalLevel;
+            int maxChestChecksForGoal = VaultHuntersManager.getChestChecksForGoalLevel(shopLevel);
+            int chestChecks = slotData.has("vault_chest_checks")
+                    ? Math.min(slotData.get("vault_chest_checks").getAsInt(), maxChestChecksForGoal)
+                    : maxChestChecksForGoal;
+            vhManager.setTotalChestChecks(chestChecks);
+            LOGGER.info("Chest checks: {}", chestChecks);
 
             if (slotData.has("wooden_chest_weight")) {
                 float weight = slotData.get("wooden_chest_weight").getAsFloat();
@@ -473,10 +681,22 @@ public class APWebSocketClient implements WebSocket.Listener {
                 APSkillLockManager.setLockSpecializations(lockSpecializations);
             }
 
-            if (slotData.has("skill_checks")) {
-                skillChecksEnabled = slotData.get("skill_checks").getAsBoolean();
-                LOGGER.info("Skill checks: {}", skillChecksEnabled ? "enabled" : "disabled; received skill unlocks will be bought at rank 1");
+            if (slotData.has("checks_behind_skills")) {
+                checksBehindSkillsEnabled = slotData.get("checks_behind_skills").getAsBoolean();
+            } else if (slotData.has("skill_checks")) {
+                checksBehindSkillsEnabled = slotData.get("skill_checks").getAsBoolean();
             }
+            if (slotData.has("auto_learn_skills")) {
+                autoLearnSkillsEnabled = slotData.get("auto_learn_skills").getAsBoolean();
+            } else if (slotData.has("skill_checks")) {
+                autoLearnSkillsEnabled = !slotData.get("skill_checks").getAsBoolean();
+            }
+            if (checksBehindSkillsEnabled && autoLearnSkillsEnabled) {
+                LOGGER.warn("Both Checks Behind Skills and Auto Learn Skills are enabled; disabling Auto Learn Skills to avoid immediate self-checks");
+                autoLearnSkillsEnabled = false;
+            }
+            APSkillLockManager.setUnlockChecksEnabled(checksBehindSkillsEnabled);
+            LOGGER.info("Checks Behind Skills: {}; Auto Learn Skills: {}", checksBehindSkillsEnabled, autoLearnSkillsEnabled);
 
             if (slotData.has("max_xp_scaling")) {
                 vhManager.setMaxXpScaling(slotData.get("max_xp_scaling").getAsInt());
@@ -486,15 +706,29 @@ public class APWebSocketClient implements WebSocket.Listener {
                 vhManager.setMaxLootScaling(slotData.get("max_loot_scaling").getAsInt());
             }
 
+            if (slotData.has("progressive_vault_time")) {
+                vhManager.setProgressiveVaultTime(slotData.get("progressive_vault_time").getAsInt());
+            }
+
+            vhManager.setProgressiveCrystalCostReduction(-1);
+
             if (slotData.has("start_with_vault_kit")) {
                 vhManager.setStartWithVaultKit(slotData.get("start_with_vault_kit").getAsBoolean());
             }
 
+            vhManager.markSlotSettingsLoaded();
+
             if (server != null) {
-                vhManager.initializeWorldProgression(server);
-                for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-                    vhManager.grantStartingKitIfEnabled(player);
-                }
+                runOnServerThread(() -> {
+                    vhManager.initializeWorldProgression(server);
+                    for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                        vhManager.grantStartingKitIfEnabled(player);
+                        if (autoLearnSkillsEnabled) {
+                            vhManager.repairAutoLearnedUnlocks(player);
+                        }
+                    }
+                    APBountyCheckManager.refreshExistingRewards(server);
+                });
             }
         }
 
@@ -523,20 +757,252 @@ public class APWebSocketClient implements WebSocket.Listener {
         }
     }
 
+    private boolean syncCheckedLocations(JsonObject packet, boolean replace) {
+        if (!packet.has("checked_locations") || !packet.get("checked_locations").isJsonArray()) {
+            return false;
+        }
+
+        if (replace) {
+            checkedLocations.clear();
+        }
+        int synced = 0;
+        boolean changed = false;
+        for (JsonElement element : packet.getAsJsonArray("checked_locations")) {
+            try {
+                long locationId = element.getAsLong();
+                if (checkedLocations.add(locationId)) {
+                    changed = true;
+                }
+                if (vhManager != null && !vhManager.isLocationChecked(locationId)) {
+                    vhManager.markLocationChecked(locationId);
+                }
+                synced++;
+            } catch (Exception ignored) {
+            }
+        }
+        LOGGER.info("Synced {} checked AP locations", synced);
+        return changed;
+    }
+
     private int getQuestChecksForGoalLevel(int level) {
+        if (level <= 5) return 18;
         if (level <= 10) return 25;
         if (level <= 20) return 37;
         if (level <= 40) return 56;
-        if (level <= 50) return 58;
+        if (level <= 50) return 59;
+        if (level <= 60) return 73;
         return 76;
+    }
+
+    private void sendConnectUpdate() {
+        if (webSocket == null) {
+            return;
+        }
+        JsonObject packet = new JsonObject();
+        packet.addProperty("cmd", "ConnectUpdate");
+        JsonArray tags = new JsonArray();
+        if (deathLinkEnabled) {
+            tags.add("DeathLink");
+        }
+        if (ringLinkEnabled) {
+            tags.add("RingLink");
+        }
+        packet.add("tags", tags);
+        sendPacket(packet);
+    }
+
+    public boolean isRingLinkEnabled() {
+        return ringLinkEnabled;
+    }
+
+    public void sendRingLinkManaDelta(float manaDelta) {
+        if (!ringLinkEnabled || Math.abs(manaDelta) < 0.001F) {
+            return;
+        }
+
+        pendingRingLinkAmount += manaDelta;
+        int amount = (int) pendingRingLinkAmount;
+        if (amount == 0) {
+            return;
+        }
+        pendingRingLinkAmount -= amount;
+        sendRingLinkAmount(amount);
+    }
+
+    private void sendRingLinkAmount(int amount) {
+        if (!ringLinkEnabled || !isConnected() || webSocket == null || amount == 0) {
+            return;
+        }
+
+        JsonObject data = new JsonObject();
+        data.addProperty("time", System.currentTimeMillis() / 1000.0D);
+        data.addProperty("source", ringLinkSource);
+        data.addProperty("amount", amount);
+
+        JsonObject packet = new JsonObject();
+        packet.addProperty("cmd", "Bounce");
+        JsonArray tags = new JsonArray();
+        tags.add("RingLink");
+        packet.add("tags", tags);
+        packet.add("data", data);
+        sendPacket(packet);
+    }
+
+    public void onPlayerDeath(ServerPlayer player) {
+        if (!deathLinkEnabled || !shouldCountQuestChecksFor(player)) {
+            return;
+        }
+        if (suppressNextDeathLinks > 0) {
+            suppressNextDeathLinks--;
+            return;
+        }
+        if (deathLinkVaultsOnly && !isInVault(player)) {
+            return;
+        }
+
+        JsonObject data = new JsonObject();
+        data.addProperty("time", System.currentTimeMillis() / 1000.0D);
+        data.addProperty("source", slotName);
+        data.addProperty("cause", player.getGameProfile().getName() + " died in Vault Hunters");
+
+        JsonObject packet = new JsonObject();
+        packet.addProperty("cmd", "Bounce");
+        JsonArray tags = new JsonArray();
+        tags.add("DeathLink");
+        packet.add("tags", tags);
+        packet.add("data", data);
+        sendPacket(packet);
+    }
+
+    private void handleBounced(JsonObject packet) {
+        if (ringLinkEnabled && hasTag(packet, "RingLink") && packet.has("data")) {
+            handleRingLinkBounced(packet.getAsJsonObject("data"));
+            return;
+        }
+        if (!deathLinkEnabled || !hasTag(packet, "DeathLink") || !packet.has("data")) {
+            return;
+        }
+        JsonObject data = packet.getAsJsonObject("data");
+        if (data.has("source") && slotName != null && slotName.equals(data.get("source").getAsString())) {
+            return;
+        }
+        double deathTime = data.has("time") ? data.get("time").getAsDouble() : 0.0D;
+        if (deathTime > 0.0D && deathTime <= lastReceivedDeathLinkTime) {
+            return;
+        }
+        lastReceivedDeathLinkTime = deathTime;
+        String sourceName = data.has("source") ? data.get("source").getAsString() : "Archipelago";
+        if (server == null) {
+            return;
+        }
+        server.execute(() -> {
+            List<ServerPlayer> players = server.getPlayerList().getPlayers();
+            if (players.isEmpty()) {
+                return;
+            }
+
+            ReceivedItemsData receivedData = ReceivedItemsData.get(server);
+            for (ServerPlayer player : players) {
+                receivedData.addKnownPlayer(player.getUUID());
+                if (!deathLinkVaultCurse && deathLinkVaultsOnly && !isInVault(player)) {
+                    continue;
+                }
+                if (deathLinkVaultCurse) {
+                    DeathLinkCurseManager.receiveDeathLink(player, sourceName);
+                    continue;
+                }
+                player.sendMessage(
+                        new TextComponent("DeathLink from " + sourceName + " killed you")
+                        .withStyle(ChatFormatting.RED),
+                        player.getUUID()
+                );
+                suppressNextDeathLinks++;
+                player.kill();
+            }
+
+            if (deathLinkVaultCurse) {
+                APProgressData progressData = APProgressData.get(server);
+                for (UUID playerId : receivedData.getKnownPlayers()) {
+                    if (server.getPlayerList().getPlayer(playerId) == null) {
+                        progressData.addPendingDeathLinkCurse(playerId);
+                    }
+                }
+            }
+        });
+    }
+
+    private void handleRingLinkBounced(JsonObject data) {
+        if (data.has("source") && data.get("source").getAsInt() == ringLinkSource) {
+            return;
+        }
+        if (!data.has("amount") || server == null) {
+            return;
+        }
+        int amount = data.get("amount").getAsInt();
+        server.execute(() -> APRingLinkManager.receiveRemoteAmount(server, amount));
+    }
+
+    private boolean hasTag(JsonObject packet, String expected) {
+        if (!packet.has("tags") || !packet.get("tags").isJsonArray()) {
+            return false;
+        }
+        for (JsonElement tag : packet.getAsJsonArray("tags")) {
+            if (expected.equals(tag.getAsString())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isInVault(ServerPlayer player) {
+        ResourceLocation dimension = player.level.dimension().location();
+        return "the_vault".equals(dimension.getNamespace()) || dimension.getPath().contains("vault");
+    }
+
+    private void sendPacket(JsonObject packet) {
+        if (webSocket == null) {
+            return;
+        }
+        JsonArray wrapper = new JsonArray();
+        wrapper.add(packet);
+        webSocket.sendText(gson.toJson(wrapper), true);
+    }
+
+    private void runOnServerThread(Runnable action) {
+        if (server == null) {
+            return;
+        }
+        if (server.isSameThread()) {
+            action.run();
+        } else {
+            server.execute(action);
+        }
+    }
+
+    public boolean sendChat(String text) {
+        if (!isConnected() || webSocket == null || text == null || text.isBlank()) {
+            return false;
+        }
+        JsonObject packet = new JsonObject();
+        packet.addProperty("cmd", "Say");
+        packet.addProperty("text", text);
+        sendPacket(packet);
+        return true;
     }
 
     private void syncReceivedItemCacheScope() {
         if (server == null) {
             return;
         }
+        if (!server.isSameThread()) {
+            runOnServerThread(this::syncReceivedItemCacheScope);
+            return;
+        }
         ReceivedItemsData receivedData = ReceivedItemsData.get(server);
-        receivedData.syncConnectionSignature(getConnectionSignature());
+        if (receivedData.syncConnectionSignature(getConnectionSignature())) {
+            APProgressData.get(server).resetSlotScopedProgress();
+            LOGGER.info("Reset VHAP slot-scoped progression for new AP connection signature");
+        }
     }
 
     private String getConnectionSignature() {
@@ -549,6 +1015,11 @@ public class APWebSocketClient implements WebSocket.Listener {
         if (!packet.has("items")) return;
         if (server == null) {
             LOGGER.warn("Server is null, cannot process items");
+            return;
+        }
+        if (!server.isSameThread()) {
+            JsonObject copy = packet.deepCopy();
+            runOnServerThread(() -> handleReceivedItems(copy));
             return;
         }
 
@@ -599,6 +1070,24 @@ public class APWebSocketClient implements WebSocket.Listener {
         });
     }
 
+    public void registerKnownPlayer(ServerPlayer player) {
+        if (player == null || player.getServer() == null) {
+            return;
+        }
+        ReceivedItemsData.get(player.getServer()).addKnownPlayer(player.getUUID());
+    }
+
+    public void flushPendingFillerItems(ServerPlayer player) {
+        if (player == null || player.getServer() == null) {
+            return;
+        }
+        ReceivedItemsData receivedData = ReceivedItemsData.get(player.getServer());
+        for (ReceivedItemsData.PendingPlayerItem item : receivedData.getPendingItemsForPlayer(player.getUUID())) {
+            processReceivedItemForPlayer(player, item.itemId, item.locationId, item.sendingPlayer, item.flags);
+            receivedData.removePendingForPlayer(player.getUUID(), item.uniqueKey);
+        }
+    }
+
     private void processReceivedItem(String uniqueKey, long itemId, long locationId, int sendingPlayer, int itemFlags) {
         // CRITICAL: Must run on server thread to send packets and interact with player
         if (server != null) {
@@ -608,47 +1097,227 @@ public class APWebSocketClient implements WebSocket.Listener {
                     return;
                 }
 
-                ServerPlayer player = getCurrentPlayer();
-                if (player == null) {
+                if (!expandReceivedItemToRecipients(receivedData, uniqueKey, itemId, locationId, sendingPlayer, itemFlags)) {
                     receivedData.addPending(uniqueKey, itemId, locationId, sendingPlayer, itemFlags);
                     LOGGER.warn("No player available to receive item {}; queued for next login", uniqueKey);
                     return;
                 }
-
-                LOGGER.info("Processing item {} from location {}", itemId, locationId);
-
-                if (vhManager.applyProgressionItem(itemId, player)) {
-                    sendReceivedItemMessage(player, locationId, sendingPlayer, resolveItemNameForGame(itemId, game), getItemColor(itemFlags, itemId));
-                    receivedData.markProcessed(uniqueKey);
-                    return;
-                }
-
-                String unlockName = VaultHuntersData.getLocationNameById(itemId);
-                if (unlockName != null) {
-                    if (unlockName.startsWith("vhskill:")) {
-                        vhManager.unlockSkill(player, unlockName);
-                        if (!skillChecksEnabled) {
-                            vhManager.buySkillRankOne(player, unlockName);
-                        }
-                        sendReceivedUnlockMessage(locationId, sendingPlayer, "skill", unlockName);
-                    } else if (unlockName.startsWith("vhtalent:")) {
-                        vhManager.unlockTalent(player, unlockName);
-                        sendReceivedUnlockMessage(locationId, sendingPlayer, "talent", unlockName);
-                    } else if (unlockName.startsWith("vhmod:")) {
-                        unlockModWithPrerequisites(player, unlockName);
-                        sendReceivedUnlockMessage(locationId, sendingPlayer, "mod", unlockName);
-                    } else if (unlockName.startsWith("vhexpertise:")) {
-                        vhManager.unlockExpertise(player, unlockName);
-                        sendReceivedUnlockMessage(locationId, sendingPlayer, "expertise", unlockName);
-                    }
-                }
-                // Filler items (33700-33799)
-                else if (itemId >= 33700 && itemId < 33800) {
-                    giveFillerItem(player, itemId, getPlayerName(sendingPlayer), locationId, sendingPlayer);
-                }
                 receivedData.markProcessed(uniqueKey);
             });
         }
+    }
+
+    private boolean expandReceivedItemToRecipients(
+            ReceivedItemsData receivedData,
+            String uniqueKey,
+            long itemId,
+            long locationId,
+            int sendingPlayer,
+            int itemFlags
+    ) {
+        List<ServerPlayer> onlinePlayers = server.getPlayerList().getPlayers();
+        if (isServerProgressionItem(itemId)) {
+            ServerPlayer player = getCurrentPlayer();
+            if (player == null) {
+                return false;
+            }
+            LOGGER.info("Processing server-wide AP item {} from location {}", itemId, locationId);
+            if (vhManager.applyProgressionItem(itemId, player)) {
+                for (ServerPlayer recipient : onlinePlayers) {
+                    sendReceivedItemMessage(recipient, locationId, sendingPlayer, resolveItemNameForGame(itemId, game), getItemColor(itemFlags, itemId));
+                }
+            }
+            return true;
+        }
+
+        Set<UUID> recipients = new HashSet<>();
+        if (isFillerItem(itemId) && "single".equals(fillerRecipientMode)) {
+            ServerPlayer player = getCurrentPlayer();
+            if (player == null) {
+                return false;
+            }
+            recipients.add(player.getUUID());
+        } else if (isFillerItem(itemId) && "online".equals(fillerRecipientMode)) {
+            for (ServerPlayer recipient : onlinePlayers) {
+                recipients.add(recipient.getUUID());
+            }
+        } else {
+            recipients.addAll(receivedData.getKnownPlayers());
+            for (ServerPlayer recipient : onlinePlayers) {
+                recipients.add(recipient.getUUID());
+            }
+        }
+
+        if (recipients.isEmpty()) {
+            return false;
+        }
+
+        int delivered = 0;
+        int queued = 0;
+        for (UUID playerId : recipients) {
+            ServerPlayer recipient = server.getPlayerList().getPlayer(playerId);
+            if (recipient != null) {
+                receivedData.addKnownPlayer(recipient.getUUID());
+                processReceivedItemForPlayer(recipient, itemId, locationId, sendingPlayer, itemFlags);
+                delivered++;
+            } else {
+                receivedData.addPendingForPlayer(playerId, uniqueKey, itemId, locationId, sendingPlayer, itemFlags);
+                queued++;
+            }
+        }
+
+        LOGGER.info("Expanded AP item {} to {} online players and {} offline player queues", itemId, delivered, queued);
+        return true;
+    }
+
+    private void processReceivedItemForPlayer(ServerPlayer player, long itemId, long locationId, int sendingPlayer, int itemFlags) {
+        LOGGER.info("Processing item {} from location {} for {}", itemId, locationId, player.getName().getString());
+
+        if (itemId == VaultHuntersData.ITEM_PROGRESSIVE_BACKPACK_MOD) {
+            String unlockedMod = vhManager.unlockNextBackpackMod(player);
+            sendReceivedUnlockMessage(locationId, sendingPlayer, "mod", unlockedMod);
+            return;
+        }
+
+        if (itemId == VaultHuntersData.ITEM_PROGRESSIVE_ARTIFACT) {
+            giveProgressiveArtifact(player, locationId, sendingPlayer, itemFlags);
+            return;
+        }
+
+        String trapId = APTrapManager.trapIdForItem(itemId);
+        if (trapId != null) {
+            APTrapManager.receiveTrap(player, trapId);
+            sendReceivedItemMessage(player, locationId, sendingPlayer, APTrapManager.displayName(trapId), getItemColor(itemFlags, itemId));
+            return;
+        }
+
+        if (itemId == APBlessingManager.ITEM_BLESSING) {
+            APBlessingManager.receiveBlessing(player, getPlayerName(sendingPlayer));
+            return;
+        }
+
+        if (vhManager.applyProgressionItem(itemId, player)) {
+            sendReceivedItemMessage(player, locationId, sendingPlayer, resolveItemNameForGame(itemId, game), getItemColor(itemFlags, itemId));
+            return;
+        }
+
+        String unlockName = VaultHuntersData.getLocationNameById(itemId);
+        if (unlockName != null) {
+            if (unlockName.startsWith("vhskill:")) {
+                String deliveredSkill = resolveReceivedSkillUnlock(player, unlockName);
+                sendReceivedUnlockMessage(locationId, sendingPlayer,
+                        VaultHuntersData.isSpecializationSkill(deliveredSkill) ? "specialization" : "skill",
+                        deliveredSkill);
+            } else if (unlockName.startsWith("vhtalent:")) {
+                String deliveredTalent = resolveReceivedTalentUnlock(player, itemId, unlockName);
+                if (shouldAutoActivateUnlocks()) {
+                    vhManager.buyTalentRankOne(player, deliveredTalent);
+                }
+                sendReceivedUnlockMessage(locationId, sendingPlayer, "talent", deliveredTalent);
+            } else if (unlockName.startsWith("vhmod:")) {
+                if (shouldAutoActivateUnlocks()) {
+                    unlockModWithPrerequisites(player, unlockName);
+                } else {
+                    vhManager.unlockMod(player, unlockName);
+                }
+                sendReceivedUnlockMessage(locationId, sendingPlayer, "mod", unlockName);
+            } else if (unlockName.startsWith("vhexpertise:")) {
+                vhManager.unlockExpertise(player, unlockName);
+                if (shouldAutoActivateUnlocks()) {
+                    vhManager.buyExpertiseRankOne(player, unlockName);
+                }
+                sendReceivedUnlockMessage(locationId, sendingPlayer, "expertise", unlockName);
+            }
+        } else if (isFillerItem(itemId)) {
+            giveFillerItem(player, itemId, getPlayerName(sendingPlayer), locationId, sendingPlayer);
+        }
+    }
+
+    private boolean isFillerItem(long itemId) {
+        return itemId >= 33700 && itemId < 33800;
+    }
+
+    public List<String> getKnownPlayerNames() {
+        List<String> names = new ArrayList<>();
+        for (String name : playerNames.values()) {
+            if (name != null && !name.isBlank() && !names.contains(name)) {
+                names.add(name);
+            }
+        }
+        if (slotName != null && !slotName.isBlank() && !names.contains(slotName)) {
+            names.add(slotName);
+        }
+        return names;
+    }
+
+    private boolean isServerProgressionItem(long itemId) {
+        return itemId == VaultHuntersData.ITEM_PROGRESSIVE_LEVEL_CAP
+                || itemId == VaultHuntersData.ITEM_PROGRESSIVE_XP_SCALING
+                || itemId == VaultHuntersData.ITEM_PROGRESSIVE_LOOT_SCALING
+                || itemId == VaultHuntersData.ITEM_PROGRESSIVE_GEAR_RARITY
+                || itemId == VaultHuntersData.ITEM_PROGRESSIVE_VAULT_TIME
+                || itemId == VaultHuntersData.ITEM_PROGRESSIVE_BOUNTY
+                || itemId == VaultHuntersData.ITEM_PROGRESSIVE_CRYSTAL_COST_REDUCTION;
+    }
+
+    private String resolveReceivedSkillUnlock(ServerPlayer player, String receivedSkill) {
+        String canonical = APSkillLockManager.canonicalSkillKey(receivedSkill);
+        APUnlockData unlockData = APUnlockData.get(player.getServer());
+        String parent = VaultHuntersData.getSpecializationParent(canonical);
+
+        if (parent != null && !APSkillLockManager.getUnlockedSkills(player).contains(parent)) {
+            vhManager.unlockSkill(player, parent);
+            unlockData.setPendingSpecializationSwap(parent, canonical);
+            if (shouldAutoActivateUnlocks()) {
+                vhManager.autoActivateSkillUnlock(player, parent);
+            }
+            player.sendMessage(
+                    new TextComponent("[AP] Received " + displayUnlockName(canonical)
+                            + " before " + displayUnlockName(parent)
+                            + "; unlocked the base skill first. The base-skill item will grant this specialization.")
+                            .withStyle(ChatFormatting.AQUA),
+                    player.getUUID()
+            );
+            return parent;
+        }
+
+        if (parent == null) {
+            String replacedSpecialization = unlockData.consumePendingSpecializationSwap(canonical);
+            if (replacedSpecialization != null) {
+                vhManager.unlockSkill(player, replacedSpecialization);
+                if (shouldAutoActivateUnlocks()) {
+                    vhManager.autoActivateSkillUnlock(player, replacedSpecialization);
+                }
+                return replacedSpecialization;
+            }
+        }
+
+        vhManager.unlockSkill(player, canonical);
+        if (shouldAutoActivateUnlocks()) {
+            vhManager.autoActivateSkillUnlock(player, canonical);
+        }
+        return canonical;
+    }
+
+    private String resolveReceivedTalentUnlock(ServerPlayer player, long itemId, String receivedTalent) {
+        String talentToUnlock = APSkillLockManager.canonicalTalentKey(receivedTalent);
+        String[] progressiveTalents = PROGRESSIVE_TALENTS.get(itemId);
+        if (progressiveTalents != null) {
+            Set<String> unlocked = APSkillLockManager.getUnlockedTalents(player);
+            for (String talent : progressiveTalents) {
+                String canonical = APSkillLockManager.canonicalTalentKey(talent);
+                if (!unlocked.contains(canonical)) {
+                    talentToUnlock = canonical;
+                    break;
+                }
+            }
+        }
+        vhManager.unlockTalent(player, talentToUnlock);
+        return talentToUnlock;
+    }
+
+    private boolean shouldAutoActivateUnlocks() {
+        return autoLearnSkillsEnabled;
     }
 
     private void handleLocationInfo(JsonObject packet) {
@@ -703,8 +1372,10 @@ public class APWebSocketClient implements WebSocket.Listener {
 
         for (String prerequisite : getModPrerequisites(player, actualModName)) {
             vhManager.unlockMod(player, prerequisite);
+            vhManager.researchMod(player, prerequisite);
         }
         vhManager.unlockMod(player, actualModName);
+        vhManager.researchMod(player, actualModName);
     }
 
     private String chooseAutomaticGeniusReplacement(ServerPlayer player) {
@@ -724,7 +1395,8 @@ public class APWebSocketClient implements WebSocket.Listener {
                 "vhmod:dark_utilities", "vhmod:easy_villagers", "vhmod:easy_piglins",
                 "vhmod:botany_pots", "vhmod:snad", "vhmod:cagerium", "vhmod:mob_spawners",
                 "vhmod:phytogenic_insulator", "vhmod:potions", "vhmod:mixtures", "vhmod:brews",
-                "vhmod:vault_compass", "vhmod:map_markers", "vhmod:vault_map", "vhmod:vault_decks"
+                "vhmod:vault_compass", "vhmod:map_markers", "vhmod:vault_map", "vhmod:vault_decks",
+                "vhmod:augment_station"
         ));
         Collections.shuffle(candidates);
         Set<String> unlocked = APSkillLockManager.getUnlockedMods(player);
@@ -828,6 +1500,12 @@ public class APWebSocketClient implements WebSocket.Listener {
     }
 
     private void handlePrintJSON(JsonObject packet) {
+        if ("Hint".equals(getString(packet, "type"))) {
+            handleHintPrintJson(packet);
+            sendFormattedItemMessage(packet);
+            return;
+        }
+
         if ("ItemSend".equals(getString(packet, "type"))) {
             sendFormattedItemMessage(packet);
             return;
@@ -839,6 +1517,36 @@ public class APWebSocketClient implements WebSocket.Listener {
                 broadcastComponentToPlayers(colored("[AP] ", ChatFormatting.AQUA).append(message));
             }
         }
+    }
+
+    private void handleHintPrintJson(JsonObject packet) {
+        if (!packet.has("item") || !packet.get("item").isJsonObject()) {
+            return;
+        }
+
+        JsonObject item = packet.getAsJsonObject("item");
+        long locationId = getLong(item, "location", Long.MIN_VALUE);
+        long itemId = getLong(item, "item", Long.MIN_VALUE);
+        int receiverSlot = getInt(packet, "receiving", getInt(item, "receiving_player", slot));
+        int findingSlot = getInt(item, "player", getInt(item, "finding_player", slot));
+        int flags = getInt(item, "flags", getInt(item, "item_flags", 0));
+
+        if (locationId == Long.MIN_VALUE || itemId == Long.MIN_VALUE) {
+            return;
+        }
+
+        markCheckRewardHinted(locationId);
+
+        String itemName = resolveItemNameForGame(itemId, playerGames.getOrDefault(receiverSlot, game));
+        String receiverName = getPlayerName(receiverSlot);
+        boolean localReward = receiverSlot == slot;
+        scoutedRewardsByLocation.put(locationId, itemName);
+        scoutedRewardFlagsByLocation.put(locationId, flags);
+        scoutedRewardReceiversByLocation.put(locationId, receiverName);
+        scoutedRewardIsLocalByLocation.put(locationId, localReward);
+        updateCheckItemRewardInfo(locationId, itemName, flags, receiverName, localReward);
+        refreshOpenCheckTables();
+        LOGGER.info("Recorded AP hint for location {} from player {}", locationId, findingSlot);
     }
 
     private MutableComponent formatPrintJsonMessage(JsonObject packet) {
@@ -983,6 +1691,17 @@ public class APWebSocketClient implements WebSocket.Listener {
         }
     }
 
+    private long getLong(JsonObject object, String key, long fallback) {
+        if (object == null || !object.has(key) || !object.get(key).isJsonPrimitive()) {
+            return fallback;
+        }
+        try {
+            return object.get(key).getAsLong();
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
     private TextColor getItemColor(JsonObject itemPart, long itemId) {
         int flags = getInt(itemPart, "flags", 0);
         return getItemColor(flags, itemId);
@@ -1007,6 +1726,9 @@ public class APWebSocketClient implements WebSocket.Listener {
         }
         if (itemId >= 33700L && itemId < 33800L) {
             return legacyTextColor(ChatFormatting.AQUA);
+        }
+        if (APTrapManager.trapIdForItem(itemId) != null) {
+            return legacyTextColor(ChatFormatting.RED);
         }
         return legacyTextColor(ChatFormatting.AQUA);
     }
@@ -1068,6 +1790,9 @@ public class APWebSocketClient implements WebSocket.Listener {
             LOGGER.warn("Skipping duplicate location check send for {}", locationId);
             return;
         }
+        if (vhManager != null) {
+            vhManager.markLocationChecked(locationId);
+        }
         //APAwareLootModifier.markCheckFound(locationId);
 
         JsonObject packet = new JsonObject();
@@ -1085,25 +1810,47 @@ public class APWebSocketClient implements WebSocket.Listener {
         LOGGER.info("Sent location check: {}", locationId);
     }
 
+    public boolean isLocationChecked(long locationId) {
+        return checkedLocations.contains(locationId);
+    }
+
     public void scoutLocation(ServerPlayer player, long locationId) {
+        scoutLocation(player, locationId, false);
+    }
+
+    public void hintUsefulCheckTablePage(ServerPlayer player, int selectedSphere, int totalChecks) {
+        player.sendMessage(new TextComponent("Check Table reward hints are disabled; externally hinted checks will reveal full details").withStyle(ChatFormatting.YELLOW), player.getUUID());
+    }
+
+    private void scoutLocation(ServerPlayer player, long locationId, boolean createAsHint) {
         if (!isConnected() || webSocket == null) {
             return;
         }
 
-        scoutTargetsByLocation.put(locationId, player.getUUID());
+        if (player != null) {
+            scoutTargetsByLocation.put(locationId, player.getUUID());
+        }
 
         JsonObject packet = new JsonObject();
         packet.addProperty("cmd", "LocationScouts");
         JsonArray locations = new JsonArray();
         locations.add((int) locationId);
         packet.add("locations", locations);
-        packet.addProperty("create_as_hint", false);
+        packet.addProperty("create_as_hint", createAsHint);
 
         JsonArray wrapper = new JsonArray();
         wrapper.add(packet);
 
         webSocket.sendText(gson.toJson(wrapper), true);
-        LOGGER.info("Requested AP scout for location {}", locationId);
+        LOGGER.info("Requested AP scout for location {}{}", locationId, createAsHint ? " as hint" : "");
+    }
+
+    private ServerPlayer playerFromScoutTarget(long locationId) {
+        if (server == null) {
+            return null;
+        }
+        UUID playerId = scoutTargetsByLocation.get(locationId);
+        return playerId != null ? server.getPlayerList().getPlayer(playerId) : getCurrentPlayer();
     }
 
     public String getScoutedRewardName(long locationId) {
@@ -1114,6 +1861,10 @@ public class APWebSocketClient implements WebSocket.Listener {
         return scoutedRewardFlagsByLocation.getOrDefault(locationId, 0);
     }
 
+    private boolean isProgressionOrUseful(int flags) {
+        return (flags & 3) != 0;
+    }
+
     public String getScoutedRewardReceiverName(long locationId) {
         return scoutedRewardReceiversByLocation.get(locationId);
     }
@@ -1122,8 +1873,48 @@ public class APWebSocketClient implements WebSocket.Listener {
         return scoutedRewardIsLocalByLocation.getOrDefault(locationId, false);
     }
 
+    public boolean isCheckRewardHinted(long locationId) {
+        if (server == null || !server.isSameThread()) {
+            return false;
+        }
+        return server != null && APProgressData.get(server).hasCheckTableHint(locationId);
+    }
+
+    public String getShopCheckRewardDisplay() {
+        return shopCheckRewardDisplay;
+    }
+
+    public String getBountyCheckRewardDisplay() {
+        return bountyCheckRewardDisplay;
+    }
+
+    private String readRewardDisplayMode(JsonObject slotData, String key, String fallback) {
+        if (!slotData.has(key)) {
+            return fallback;
+        }
+        try {
+            String value = slotData.get(key).getAsString().trim().toLowerCase(Locale.ROOT);
+            if (value.startsWith("option_")) {
+                value = value.substring("option_".length());
+            }
+            return switch (value) {
+                case "0" -> "all";
+                case "1" -> "classification";
+                case "2" -> "nothing";
+                case "all", "classification", "nothing" -> value;
+                default -> fallback;
+            };
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
     private void updateCheckItemRewardInfo(long locationId, String itemName, int flags, String receiverName, boolean localReward) {
         if (server == null || itemName == null || itemName.isBlank()) {
+            return;
+        }
+        if (!server.isSameThread()) {
+            runOnServerThread(() -> updateCheckItemRewardInfo(locationId, itemName, flags, receiverName, localReward));
             return;
         }
 
@@ -1142,6 +1933,14 @@ public class APWebSocketClient implements WebSocket.Listener {
             player.getInventory().setChanged();
             player.containerMenu.broadcastChanges();
         }
+        APBountyCheckManager.updateRewardInfo(server, locationId, itemName, flags, receiverName, localReward);
+    }
+
+    private void markCheckRewardHinted(long locationId) {
+        if (!isChestCheckLocation(locationId) && !isBountyCheckLocation(locationId)) {
+            return;
+        }
+        runOnServerThread(() -> APProgressData.get(server).markCheckTableHinted(locationId));
     }
 
     private void updateStackRewardInfo(ItemStack stack, long locationId, String itemName, int flags, String receiverName, boolean localReward) {
@@ -1203,15 +2002,13 @@ public class APWebSocketClient implements WebSocket.Listener {
     // ========== ITEM MAPPING ==========
 
     private String getSkillName(long itemId) {
-        // Map item IDs to skill names (43000-43026)
         String[] skills = {
-                "nova", "fireball", "javelin", "stonefall",
-                "ice_bolt", "implode", "shield_bash", "arcane",
-                "earthquake", "lightning_strike", "dash", "vein_miner",
-                "ghost_walk", "rampage", "mega_jump", "shell",
-                "taunt", "heal", "angel", "empower",
-                "hunter", "smite", "storm_arrow", "battle_cry",
-                "rejuvenation_totem", "mana_shield", "chaos_cube"
+                "heal", "dash", "nova", "execute", "ghost_walk",
+                "mega_jump", "rampage", "smite", "empower", "vein_miner",
+                "hunter", "farmer", "mana_shield", "retribution", "implode",
+                "taunt", "stonefall", "totem", "javelin", "shell",
+                "fireball", "storm_arrow", "battle_cry", "ice_bolt", "arcane",
+                "earthquake", "chain_lightning", "unknown", "grenade"
         };
 
         int index = (int)(itemId - 43000);
@@ -1220,18 +2017,27 @@ public class APWebSocketClient implements WebSocket.Listener {
 
     private String getTalentName(long itemId) {
         String[] talents = {
-                "speed", "haste", "strength", "intelligence",
-                "nucleus", "daze", "last_stand", "berserking",
-                "sorcery", "witchery", "frozen_impact", "frostbite",
-                "methodical", "depleted", "prudent", "stoneskin",
-                "blight", "toxic_reaction", "arcana", "blazing",
-                "lucky_momentum", "frenzy", "lightning_finesse",
-                "lightning_mastery", "prime_amplification", "hunters_instinct",
-                "purist", "farmer_twerker", "bountiful_harvest",
-                "treasure_seeker", "horde_mastery", "champion_mastery",
-                "assassin_mastery", "dungeon_mastery", "fatal_strike",
-                "mana_steal", "life_leech", "cleave",
-                "throw_power", "damage", "conduct", "ethereal"
+                "intelligence", "haste", "strength", "speed", "reach", "purist",
+                "stone_skin", "critical_strike", "fatal_strike_chance",
+                "fatal_strike_damage", "thorns_chance", "thorns_damage",
+                "horde_mastery", "unknown", "unknown",
+                "unknown", "last_stand", "berserking", "sorcery",
+                "prime_amplification", "bountiful_harvest", "lightning_damage",
+                "lightning_stun", "treasure_seeker", "stoneskin",
+                "lingering_fumes", "clean_escape", "witchery", "methodical",
+                "depleted", "fatal_strike", "fatal_strike_ii", "mana_harvest",
+                "heart_fragments", "mana_steal", "mana_steal_ii",
+                "life_steal", "life_steal_ii", "cleave", "explosive",
+                "prudent", "alchemist", "blizzard", "frostbite", "daze",
+                "nucleus", "hunters_instinct", "arcana", "blazing",
+                "lucky_momentum", "frenzy", "voltaic_impact",
+                "axe_specialisation", "sword_specialisation", "blood_rush",
+                "blight", "toxic_reaction", "unknown",
+                "unknown", "unknown", "farmer_twerker", "might_ii",
+                "battle_trance", "intelligence_ii", "haste_ii", "speed_ii",
+                "prudent_ii", "ethereal", "quickening", "trap_disarm",
+                "treasure_sense", "executioner", "assassin_mastery",
+                "dungeon_mastery", "champion_mastery"
         };
 
         int index = (int)(itemId - 43100);
@@ -1258,7 +2064,8 @@ public class APWebSocketClient implements WebSocket.Listener {
                 "botany_pots", "snad", "cagerium",
                 "mob_spawners", "phytogenic_insulator", "potions",
                 "mixtures", "brews", "vault_compass",
-                "map_markers", "vault_map", "vault_decks"
+                "map_markers", "vault_map", "vault_decks",
+                "augment_station"
         };
 
         int index = (int)(itemId - 43200);
@@ -1268,11 +2075,11 @@ public class APWebSocketClient implements WebSocket.Listener {
     private String getExpertiseName(long itemId) {
         String[] expertises = {
                 "lucky_altar", "fortuitous_finesse", "fortunate",
-                "experienced", "infuser", "crystalmancer",
+                "experienced", "infuser", "mystic",
                 "trinketer", "divine", "unbreakable",
                 "marketer", "bounty_hunter", "angel",
                 "jeweler", "artisan", "bartering",
-                "companions_loyalty"
+                "companion_loyalty"
         };
 
         int index = (int)(itemId - 43300);
@@ -1284,122 +2091,61 @@ public class APWebSocketClient implements WebSocket.Listener {
 
         // Map to actual VH items/commands [itemId, baseCount]
         String[][] fillers = {
-                // 0: Cooked Vault Steak (8)
                 {"the_vault:cooked_vault_steak", "8"},
-                // 1: Chromatic Iron Ingot (24)
                 {"the_vault:chromatic_iron_ingot", "24"},
-                // 2: Shulker Box (1)
                 {"minecraft:shulker_box", "1"},
-                // 3: Bottle O' Enchanting (20)
                 {"minecraft:experience_bottle", "20"},
-                // 4: Emerald (50)
                 {"minecraft:emerald", "50"},
-                // 5: Ender Pearl (1)
                 {"minecraft:ender_pearl", "2"},
-                // 6: Pouch (1)
                 {"sophisticatedbackpacks:backpack", "1"},
-                // 7: Pickup Upgrade (1)
-                {"sophisticatedbackpacks:backpack", "1"},
-                // 8: Void Upgrade (1)
-                {"sophisticatedbackpacks:backpack", "1"},
-                // 9: Bounty Pearl (10)
                 {"the_vault:bounty_pearl", "10"},
-                // 10: Large Chromatic Iron Stack (32)
-                {"the_vault:chromatic_iron_ingot", "32"},
-                // 11: Gemstone (2)
                 {"the_vault:gemstone", "2"},
-                // 12: Chromatic Steel Ingot (4)
                 {"the_vault:chromatic_steel_ingot", "4"},
-                // 13: Small Vault Gold (1)
                 {"the_vault:vault_gold", "1"},
-                // 14: Vault Plating (9)
-                {"the_vault:vault_plating", "9"},
-                // 15: Diamond (5)
-                {"minecraft:diamond", "5"},
-                // 16: Large Vault Bronze Stack (81)
-                {"the_vault:vault_bronze", "81"},
-                // 17: Vault Alloy (1)
-                {"the_vault:vault_alloy", "1"},
-                // 18: Wild Focus (1)
-                {"the_vault:wild_focus", "1"},
-                // 20: Large Vault Plating Stack (12)
-                {"the_vault:vault_plating", "12"},
-                // 21: Vault Bronze Stack (32)
+                {"the_vault:vault_silver", "1"},
                 {"the_vault:vault_bronze", "32"},
-                // 22: Vault Scrap (1)
+                {"minecraft:diamond", "5"},
+                {"the_vault:vault_alloy", "1"},
+                {"the_vault:wild_focus", "1"},
+                {"the_vault:vault_plating", "9"},
                 {"the_vault:vault_scrap", "1"},
-                // 23: Vault Gold (1)
-                {"the_vault:vault_gold", "1"},
-                // 24: Vault Diamond (1)
-                {"the_vault:vault_diamond", "1"},
-                // 25: Hamburger (1)
-                {"the_vault:plain_burger", "1"},
-                // 26: Seal of the Scout (1)
-                {"the_vault:crystal_seal_scout", "1"},
-                // 27: Silver Scrap (1)
-                {"the_vault:silver_scrap", "1"},
-                // 28: Soul Shard (1)
-                {"the_vault:soul_shard", "1"},
-                // 29: Vault Helmet (1)
-                {"the_vault:helmet", "1"},
-                // 30: Vault Chestplate (1)
-                {"the_vault:chestplate", "1"},
-                // 31: Vault Leggings (1)
-                {"the_vault:leggings", "1"},
-                // 32: Vault Boots (1)
-                {"the_vault:boots", "1"},
-                // 33: Mod Box (1)
-                {"the_vault:mod_box", "1"},
-                // 34: Diamond (20)
-                {"minecraft:diamond", "20"},
-                // 35: Seal of the Sage (1)
-                {"the_vault:crystal_seal_sage", "1"},
-                // 36: Phoenix Capstone (1)
-                {"the_vault:phoenix_feather", "1"},
-                // 37: Catalyst Fragment (1)
-                {"the_vault:vault_catalyst_fragment", "64"},
-                // 38: Inscription Piece (1)
-                {"the_vault:inscription_piece", "32"},
-                // 39: Unidentified Artifact (1)
-                {"the_vault:unidentified_artifact", "1"},
-                // 40: Tiny Vault Gold (4)
                 {"the_vault:vault_gold", "4"},
-                // 41: Vault Trinket (1)
+                {"the_vault:vault_diamond", "1"},
+                {"the_vault:plain_burger", "1"},
+                {"the_vault:crystal_seal_empty", "1"},
+                {"the_vault:silver_scrap", "1"},
+                {"the_vault:soul_shard", "1"},
+                {"the_vault:helmet", "1"},
+                {"the_vault:chestplate", "1"},
+                {"the_vault:leggings", "1"},
+                {"the_vault:boots", "1"},
+                {"the_vault:mod_box", "1"},
+                {"minecraft:diamond", "20"},
+                {"the_vault:phoenix_feather", "1"},
+                {"the_vault:vault_catalyst_fragment", "64"},
+                {"the_vault:inscription_piece", "32"},
+                {"the_vault:unidentified_artifact", "1"},
                 {"the_vault:trinket", "1"},
-                // 42: Tiny Vault Diamond (4)
                 {"the_vault:vault_diamond", "16"},
-                // 43: Large Vault Gold (20)
                 {"the_vault:vault_gold", "20"},
-                // 44: POG (1)
+                {"the_vault:vault_silver", "4"},
+                {"the_vault:vault_silver", "20"},
                 {"the_vault:gem_pog", "1"},
-                // 45: Netherite Ingot (1)
                 {"minecraft:netherite_ingot", "2"},
-                // 46: Wardrobe (1)
                 {"the_vault:wardrobe", "1"},
-                // 47: Huge Vault Bronze Stack (64)
                 {"the_vault:vault_bronze", "64"},
-                // 48: Echo Gem (1)
                 {"the_vault:gem_echo", "1"},
-                // 49: Small Bundle Mod Box (2)
-                {"the_vault:mod_box", "2"},
-                // 50: Sour Orange (1)
                 {"the_vault:sour_orange", "1"},
-                // 51: Bamboo (1)
                 {"minecraft:bamboo", "1"},
-                // 52: Unidentified Trinket (1)
-                {"the_vault:trinket", "1"},
-                // 53: Huge Vault Gold Stack (64)
                 {"the_vault:vault_gold", "64"},
-                // 54: Neuralizer (1)
+                {"the_vault:vault_silver", "64"},
+                {"the_vault:vault_bronze", "81"},
                 {"the_vault:neuralizer", "1"},
-                // 55: Perfect Echo Gem (1)
                 {"the_vault:perfect_echo_gem", "1"},
-                // 56: Lost Bounty (1)
                 {"the_vault:lost_bounty", "1"},
-                // 57: Ember (1)
                 {"the_vault:ember", "1"},
-                // 58: Omega POG (1)
-                {"the_vault:omega_pog", "1"}
+                {"the_vault:omega_pog", "1"},
+                {"minecraft:air", "1"}
         };
 
         if (index >= 0 && index < fillers.length) {
@@ -1571,6 +2317,26 @@ public class APWebSocketClient implements WebSocket.Listener {
             );
         }
     }
+
+    private void giveProgressiveArtifact(ServerPlayer player, long sourceLocationId, int sendingPlayer, int itemFlags) {
+        int artifactProgress = APProgressData.get(player.getServer()).claimNextArtifactProgress();
+        int artifactOrder = APArtifactLayout.orderForProgress(artifactProgress, artifactRequirement);
+        if (artifactOrder <= 0 || artifactOrder > 25) {
+            LOGGER.warn("Cannot give AP artifact for invalid artifact progress {} with requirement {}", artifactProgress, artifactRequirement);
+            return;
+        }
+
+        DiscoveredArtifactsData.get(player.getServer()).discoverArtifactAndBroadcast(artifactOrder, player);
+
+        sendReceivedItemMessage(
+                player,
+                sourceLocationId,
+                sendingPlayer,
+                "Artifact " + artifactProgress + "/" + artifactRequirement,
+                getItemColor(itemFlags, VaultHuntersData.ITEM_PROGRESSIVE_ARTIFACT)
+        );
+        LOGGER.info("Recorded AP artifact progress {}/{} as artifact order {} for {}", artifactProgress, artifactRequirement, artifactOrder, player.getName().getString());
+    }
     // ========== UTILITY ==========
 
     private String getString(JsonObject object, String key) {
@@ -1664,6 +2430,10 @@ public class APWebSocketClient implements WebSocket.Listener {
             String fillerName = getFillerRewardName(itemId);
             return fillerName != null ? fillerName : "Useful Vault Supplies";
         }
+        String trapId = APTrapManager.trapIdForItem(itemId);
+        if (trapId != null) {
+            return APTrapManager.displayName(trapId);
+        }
         return null;
     }
 
@@ -1689,7 +2459,7 @@ public class APWebSocketClient implements WebSocket.Listener {
         if (senderSlot == slot || game.equals(gameName)) {
             String localName = VaultHuntersData.getLocationNameById(locationId);
             if (localName != null) {
-                return localName;
+                return displayLocationName(localName);
             }
             if (locationId >= 44000L && locationId < 44500L) {
                 return getCheckTableLocationName(locationId);
@@ -1708,6 +2478,14 @@ public class APWebSocketClient implements WebSocket.Listener {
         if (itemId == VaultHuntersData.ITEM_PROGRESSIVE_XP_SCALING) return "Progressive XP Scaling";
         if (itemId == VaultHuntersData.ITEM_PROGRESSIVE_LOOT_SCALING) return "Progressive Loot Scaling";
         if (itemId == VaultHuntersData.ITEM_PROGRESSIVE_GEAR_RARITY) return "Progressive Gear Rarity";
+        if (itemId == VaultHuntersData.ITEM_PROGRESSIVE_ARTIFACT) return "Artifact";
+        if (itemId == VaultHuntersData.ITEM_PROGRESSIVE_VAULT_TIME) return "Progressive Vault Time";
+        if (itemId == VaultHuntersData.ITEM_PROGRESSIVE_BOUNTY) return "Progressive Bounty";
+        if (itemId == VaultHuntersData.ITEM_PROGRESSIVE_CRYSTAL_COST_REDUCTION) return "Progressive Crystal Cost Reduction";
+        if (itemId == VaultHuntersData.ITEM_PROGRESSIVE_BACKPACK_MOD) return "Progressive Backpack Mod";
+        if (itemId == VaultHuntersData.ITEM_SKILL_POINT) return "Skill Point";
+        if (itemId == VaultHuntersData.ITEM_EXPERTISE_POINT) return "Expertise Point";
+        if (itemId == VaultHuntersData.ITEM_KNOWLEDGE_STAR) return "Knowledge Point";
         return null;
     }
 
@@ -1716,6 +2494,9 @@ public class APWebSocketClient implements WebSocket.Listener {
             return false;
         }
         if (itemId >= 33700L && itemId < 33800L) {
+            return true;
+        }
+        if (APTrapManager.trapIdForItem(itemId) != null) {
             return true;
         }
         if (getProgressionItemName(itemId) != null) {
@@ -1729,9 +2510,29 @@ public class APWebSocketClient implements WebSocket.Listener {
     }
 
     private String displayUnlockName(String unlockName) {
+        String displayName = UNLOCK_DISPLAY_NAMES.get(unlockName);
+        if (displayName != null) {
+            return displayName;
+        }
         int separator = unlockName.indexOf(':');
         String name = separator >= 0 ? unlockName.substring(separator + 1) : unlockName;
         return displayItemName("vhap:" + name);
+    }
+
+    private String displayLocationName(String locationName) {
+        if (locationName.startsWith("vhskill:")) {
+            return "Skill: " + displayUnlockName(locationName);
+        }
+        if (locationName.startsWith("vhtalent:")) {
+            return "Talent: " + displayUnlockName(locationName);
+        }
+        if (locationName.startsWith("vhexpertise:")) {
+            return "Expertise: " + displayUnlockName(locationName);
+        }
+        if (locationName.startsWith("vhmod:")) {
+            return "Mod: " + displayUnlockName(locationName);
+        }
+        return locationName;
     }
 
     private int parsePositiveInt(String value, int fallback) {
@@ -1772,24 +2573,18 @@ public class APWebSocketClient implements WebSocket.Listener {
 
     private String displayStackName(String itemId, int count) {
         if ("minecraft:experience_bottle".equals(itemId)) {
-            if (count >= 40) {
-                return "A crate of XP bottles";
-            }
-            if (count >= 16) {
-                return "A bundle of XP bottles";
-            }
-            return count + "x XP Bottle";
+            return count == 1 ? "XP Bottle" : "XP Bottles";
         }
 
         String itemName = displayItemName(itemId);
         if (count == 1) {
             return itemName;
         }
-        return count + "x " + itemName;
+        return itemName.endsWith("s") ? itemName : itemName + "s";
     }
 
     private MutableComponent quoted(String text, ChatFormatting color, boolean bold) {
-        MutableComponent component = new TextComponent("\"" + text + "\"").withStyle(color);
+        MutableComponent component = new TextComponent(text).withStyle(color);
         if (bold) {
             component.withStyle(ChatFormatting.BOLD);
         }
@@ -1797,7 +2592,7 @@ public class APWebSocketClient implements WebSocket.Listener {
     }
 
     private MutableComponent quoted(String text, TextColor color, boolean bold) {
-        MutableComponent component = new TextComponent("\"" + text + "\"")
+        MutableComponent component = new TextComponent(text)
                 .withStyle(style -> style.withColor(color));
         if (bold) {
             component.withStyle(ChatFormatting.BOLD);
@@ -1840,6 +2635,7 @@ public class APWebSocketClient implements WebSocket.Listener {
         MutableComponent message = colored(localSlotDisplayName(), ChatFormatting.YELLOW)
                 .append(colored(" found their ", ChatFormatting.WHITE))
                 .append(quoted(itemName, getItemColor(0, Long.MIN_VALUE), false));
+        appendSourceLocation(message, locationId, slot);
         broadcastComponentToPlayers(message);
     }
 
@@ -1849,6 +2645,7 @@ public class APWebSocketClient implements WebSocket.Listener {
                 .append(colored(capitalize(type), ChatFormatting.DARK_PURPLE))
                 .append(colored(": ", ChatFormatting.WHITE))
                 .append(colored(displayUnlockName(unlockName), ChatFormatting.DARK_PURPLE));
+        appendSourceLocation(message, locationId, slot);
         broadcastComponentToPlayers(message);
     }
 
@@ -1870,11 +2667,17 @@ public class APWebSocketClient implements WebSocket.Listener {
                     .append(colored(" to you", ChatFormatting.WHITE));
         }
 
+        appendSourceLocation(message, locationId, sendingPlayer);
         broadcastComponentToPlayers(message);
     }
 
     private boolean isChestCheckLocation(long locationId) {
         return locationId >= 44000L && locationId < 44500L;
+    }
+
+    private boolean isBountyCheckLocation(long locationId) {
+        return (locationId >= 43650L && locationId < 43700L)
+                || (locationId >= 44500L && locationId < 44650L);
     }
 
     private String getCheckTableLocationName(long locationId) {

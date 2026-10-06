@@ -12,6 +12,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.UUID;
+import java.util.Set;
 
 @Mixin(targets = "iskallia.vault.quest.QuestState", remap = false)
 public class QuestCompletionMixin {
@@ -21,12 +22,25 @@ public class QuestCompletionMixin {
     @Shadow
     protected UUID playerId;
 
+    @Shadow
+    protected Set<String> completed;
+
+    private boolean vhap$wasCompleted;
+
+    @Inject(method = "setComplete", at = @At("HEAD"), remap = false)
+    private void beforeQuestCompleted(Quest quest, CallbackInfo ci) {
+        vhap$wasCompleted = completed.contains(quest.getId());
+    }
+
     @Inject(
             method = "setComplete",
             at = @At("TAIL"),
             remap = false
     )
     private void onQuestCompleted(Quest quest, CallbackInfo ci) {
+        if (vhap$wasCompleted) {
+            return;
+        }
         LOGGER.info("=== QUEST MIXIN FIRED ===");
         LOGGER.info("Quest: {}", quest.getName());
         LOGGER.info("Player UUID: {}", playerId);

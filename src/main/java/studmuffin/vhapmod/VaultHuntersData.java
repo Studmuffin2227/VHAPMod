@@ -7,9 +7,9 @@ import java.util.Map;
  * Defines all Vault Hunters locations (checks) and items for Archipelago integration.
  *
  * Location ID Ranges:
- * - 43000-43025: Skills (26 total)
- * - 43100-43200: Talents (~100 slots)
- * - 43200-43256: Mods (57 slots)
+ * - 43000-43028: Skills (29 total)
+ * - 43100-43174: Talents (75 total)
+ * - 43200-43257: Mods (58 slots)
  * - 43300-43315: Expertises (16 slots)
  * - 43400-43408: Milestone checks (levels, first vault, etc.)
  */
@@ -24,79 +24,81 @@ public class VaultHuntersData {
     public static final long EXPERTISE_BASE_ID = 43300L;
     public static final long MILESTONE_BASE_ID = 43400L;
     public static final long GOAL_BASE_ID = 43750L;
+    public static final long SPECIALIZATION_BASE_ID = 43800L;
 
-    // Skills (26 total) - IDs 43000-43025
+    // Skills (29 total) - IDs 43000-43028
     private static final HashMap<String, Long> SKILL_LOCATIONS = new HashMap<>() {{
-        put("vhskill:nova", SKILL_BASE_ID + 0);
-        put("vhskill:fireball", SKILL_BASE_ID + 1);
-        put("vhskill:javelin", SKILL_BASE_ID + 2);
-        put("vhskill:stonefall", SKILL_BASE_ID + 3);
-        put("vhskill:ice_bolt", SKILL_BASE_ID + 4);
-        put("vhskill:implode", SKILL_BASE_ID + 5);
-        put("vhskill:shield_bash", SKILL_BASE_ID + 6);
-        put("vhskill:arcane", SKILL_BASE_ID + 7);
-        put("vhskill:earthquake", SKILL_BASE_ID + 8);
-        put("vhskill:lightning_strike", SKILL_BASE_ID + 9);
-        put("vhskill:dash", SKILL_BASE_ID + 10);
-        put("vhskill:vein_miner", SKILL_BASE_ID + 11);
-        put("vhskill:ghost_walk", SKILL_BASE_ID + 12);
-        put("vhskill:rampage", SKILL_BASE_ID + 13);
-        put("vhskill:mega_jump", SKILL_BASE_ID + 14);
-        put("vhskill:shell", SKILL_BASE_ID + 15);
-        put("vhskill:taunt", SKILL_BASE_ID + 16);
-        put("vhskill:heal", SKILL_BASE_ID + 17);
-        put("vhskill:angel", SKILL_BASE_ID + 18);
-        put("vhskill:empower", SKILL_BASE_ID + 19);
-        put("vhskill:hunter", SKILL_BASE_ID + 20);
-        put("vhskill:smite", SKILL_BASE_ID + 21);
-        put("vhskill:storm_arrow", SKILL_BASE_ID + 22);
-        put("vhskill:battle_cry", SKILL_BASE_ID + 23);
-        put("vhskill:rejuvenation_totem", SKILL_BASE_ID + 24);
-        put("vhskill:mana_shield", SKILL_BASE_ID + 25);
-        put("vhskill:chaos_cube", SKILL_BASE_ID + 26);
-        put("vhskill:heal_group", SKILL_BASE_ID + 27);
-        put("vhskill:heal_cleanse", SKILL_BASE_ID + 28);
-        put("vhskill:dash_damage", SKILL_BASE_ID + 29);
-        put("vhskill:dash_warp", SKILL_BASE_ID + 30);
-        put("vhskill:nova_slow", SKILL_BASE_ID + 31);
-        put("vhskill:nova_dot", SKILL_BASE_ID + 32);
-        put("vhskill:ghost_walk_spirit", SKILL_BASE_ID + 33);
-        put("vhskill:mega_jump_drill", SKILL_BASE_ID + 34);
-        put("vhskill:mega_dig", SKILL_BASE_ID + 35);
-        put("vhskill:rampage_leech", SKILL_BASE_ID + 36);
-        put("vhskill:rampage_chain", SKILL_BASE_ID + 37);
-        put("vhskill:smite_archon", SKILL_BASE_ID + 38);
-        put("vhskill:smite_thunderstorm", SKILL_BASE_ID + 39);
-        put("vhskill:empower_ice_armor", SKILL_BASE_ID + 40);
-        put("vhskill:empower_slowness_aura", SKILL_BASE_ID + 41);
-        put("vhskill:vein_miner_fortune", SKILL_BASE_ID + 42);
-        put("vhskill:vein_miner_durability", SKILL_BASE_ID + 43);
-        put("vhskill:vein_miner_void", SKILL_BASE_ID + 44);
-        put("vhskill:hunter_javelin", SKILL_BASE_ID + 45);
-        put("vhskill:mana_barrier", SKILL_BASE_ID + 46);
-        put("vhskill:retribution", SKILL_BASE_ID + 47);
-        put("vhskill:implode_life_tap", SKILL_BASE_ID + 48);
-        put("vhskill:taunt_repel", SKILL_BASE_ID + 49);
-        put("vhskill:taunt_charm", SKILL_BASE_ID + 50);
-        put("vhskill:heros_landing", SKILL_BASE_ID + 51);
-        put("vhskill:coldsnap", SKILL_BASE_ID + 52);
-        put("vhskill:wrath_totem", SKILL_BASE_ID + 53);
-        put("vhskill:spirit_totem", SKILL_BASE_ID + 54);
-        put("vhskill:hatred_totem", SKILL_BASE_ID + 55);
-        put("vhskill:javelin_piercing", SKILL_BASE_ID + 56);
-        put("vhskill:javelin_scatter", SKILL_BASE_ID + 57);
-        put("vhskill:shell_porcupine", SKILL_BASE_ID + 58);
-        put("vhskill:shell_quill", SKILL_BASE_ID + 59);
-        put("vhskill:fireball_volley", SKILL_BASE_ID + 60);
-        put("vhskill:fireball_fireshot", SKILL_BASE_ID + 61);
-        put("vhskill:storm_arrow_blizzard", SKILL_BASE_ID + 62);
-        put("vhskill:battle_cry_spectral_cry", SKILL_BASE_ID + 63);
-        put("vhskill:battle_cry_lucky_cry", SKILL_BASE_ID + 64);
-        put("vhskill:ice_bolt_blast", SKILL_BASE_ID + 65);
-        put("vhskill:arcane_rail", SKILL_BASE_ID + 66);
-        put("vhskill:earthquake_landmine", SKILL_BASE_ID + 67);
-        put("vhskill:ball_lightning", SKILL_BASE_ID + 68);
-        put("vhskill:toxic_vial", SKILL_BASE_ID + 69);
+        put("vhskill:heal", SKILL_BASE_ID + 0);
+        put("vhskill:dash", SKILL_BASE_ID + 1);
+        put("vhskill:nova", SKILL_BASE_ID + 2);
+        put("vhskill:execute", SKILL_BASE_ID + 3);
+        put("vhskill:ghost_walk", SKILL_BASE_ID + 4);
+        put("vhskill:mega_jump", SKILL_BASE_ID + 5);
+        put("vhskill:rampage", SKILL_BASE_ID + 6);
+        put("vhskill:smite", SKILL_BASE_ID + 7);
+        put("vhskill:empower", SKILL_BASE_ID + 8);
+        put("vhskill:vein_miner", SKILL_BASE_ID + 9);
+        put("vhskill:hunter", SKILL_BASE_ID + 10);
+        put("vhskill:farmer", SKILL_BASE_ID + 11);
+        put("vhskill:mana_shield", SKILL_BASE_ID + 12);
+        put("vhskill:retribution", SKILL_BASE_ID + 13);
+        put("vhskill:implode", SKILL_BASE_ID + 14);
+        put("vhskill:taunt", SKILL_BASE_ID + 15);
+        put("vhskill:stonefall", SKILL_BASE_ID + 16);
+        put("vhskill:totem", SKILL_BASE_ID + 17);
+        put("vhskill:javelin", SKILL_BASE_ID + 18);
+        put("vhskill:shell", SKILL_BASE_ID + 19);
+        put("vhskill:fireball", SKILL_BASE_ID + 20);
+        put("vhskill:storm_arrow", SKILL_BASE_ID + 21);
+        put("vhskill:battle_cry", SKILL_BASE_ID + 22);
+        put("vhskill:ice_bolt", SKILL_BASE_ID + 23);
+        put("vhskill:arcane", SKILL_BASE_ID + 24);
+        put("vhskill:earthquake", SKILL_BASE_ID + 25);
+        put("vhskill:chain_lightning", SKILL_BASE_ID + 26);
+        put("vhskill:grenade", SKILL_BASE_ID + 28);
+        put("vhskill:heal_group", SPECIALIZATION_BASE_ID + 0);
+        put("vhskill:heal_cleanse", SPECIALIZATION_BASE_ID + 1);
+        put("vhskill:dash_damage", SPECIALIZATION_BASE_ID + 2);
+        put("vhskill:dash_warp", SPECIALIZATION_BASE_ID + 3);
+        put("vhskill:nova_slow", SPECIALIZATION_BASE_ID + 4);
+        put("vhskill:nova_dot", SPECIALIZATION_BASE_ID + 5);
+        put("vhskill:ghost_walk_spirit", SPECIALIZATION_BASE_ID + 6);
+        put("vhskill:mega_jump_drill", SPECIALIZATION_BASE_ID + 7);
+        put("vhskill:mega_dig", SPECIALIZATION_BASE_ID + 8);
+        put("vhskill:rampage_leech", SPECIALIZATION_BASE_ID + 9);
+        put("vhskill:rampage_chain", SPECIALIZATION_BASE_ID + 10);
+        put("vhskill:smite_archon", SPECIALIZATION_BASE_ID + 11);
+        put("vhskill:smite_thunderstorm", SPECIALIZATION_BASE_ID + 12);
+        put("vhskill:empower_ice_armor", SPECIALIZATION_BASE_ID + 13);
+        put("vhskill:empower_slowness_aura", SPECIALIZATION_BASE_ID + 14);
+        put("vhskill:vein_miner_fortune", SPECIALIZATION_BASE_ID + 15);
+        put("vhskill:vein_miner_durability", SPECIALIZATION_BASE_ID + 16);
+        put("vhskill:vein_miner_void", SPECIALIZATION_BASE_ID + 17);
+        put("vhskill:hunter_javelin", SPECIALIZATION_BASE_ID + 18);
+        put("vhskill:mana_barrier", SPECIALIZATION_BASE_ID + 19);
+        put("vhskill:shield_bash", SPECIALIZATION_BASE_ID + 20);
+        put("vhskill:implode_life_tap", SPECIALIZATION_BASE_ID + 21);
+        put("vhskill:taunt_repel", SPECIALIZATION_BASE_ID + 22);
+        put("vhskill:taunt_charm", SPECIALIZATION_BASE_ID + 23);
+        put("vhskill:heros_landing", SPECIALIZATION_BASE_ID + 24);
+        put("vhskill:coldsnap", SPECIALIZATION_BASE_ID + 25);
+        put("vhskill:wrath_totem", SPECIALIZATION_BASE_ID + 26);
+        put("vhskill:spirit_totem", SPECIALIZATION_BASE_ID + 27);
+        put("vhskill:hatred_totem", SPECIALIZATION_BASE_ID + 28);
+        put("vhskill:javelin_piercing", SPECIALIZATION_BASE_ID + 29);
+        put("vhskill:javelin_scatter", SPECIALIZATION_BASE_ID + 30);
+        put("vhskill:shell_porcupine", SPECIALIZATION_BASE_ID + 31);
+        put("vhskill:shell_quill", SPECIALIZATION_BASE_ID + 32);
+        put("vhskill:fireball_volley", SPECIALIZATION_BASE_ID + 33);
+        put("vhskill:fireball_fireshot", SPECIALIZATION_BASE_ID + 34);
+        put("vhskill:storm_arrow_blizzard", SPECIALIZATION_BASE_ID + 35);
+        put("vhskill:battle_cry_spectral_cry", SPECIALIZATION_BASE_ID + 36);
+        put("vhskill:battle_cry_lucky_cry", SPECIALIZATION_BASE_ID + 37);
+        put("vhskill:ice_bolt_blast", SPECIALIZATION_BASE_ID + 38);
+        put("vhskill:arcane_rail", SPECIALIZATION_BASE_ID + 39);
+        put("vhskill:earthquake_landmine", SPECIALIZATION_BASE_ID + 40);
+        put("vhskill:ball_lightning", SPECIALIZATION_BASE_ID + 41);
+        put("vhskill:toxic_vial", SPECIALIZATION_BASE_ID + 42);
     }};
 
     private static final java.util.Set<String> SPECIALIZATION_SKILLS = java.util.Set.of(
@@ -109,7 +111,7 @@ public class VaultHuntersData {
             "vhskill:empower_slowness_aura", "vhskill:vein_miner_fortune",
             "vhskill:vein_miner_durability", "vhskill:vein_miner_void",
             "vhskill:hunter_javelin", "vhskill:mana_barrier",
-            "vhskill:retribution", "vhskill:implode_life_tap",
+            "vhskill:shield_bash", "vhskill:implode_life_tap",
             "vhskill:taunt_repel", "vhskill:taunt_charm", "vhskill:heros_landing",
             "vhskill:coldsnap", "vhskill:wrath_totem",
             "vhskill:spirit_totem", "vhskill:hatred_totem",
@@ -129,60 +131,133 @@ public class VaultHuntersData {
             "vhskill:toxic_grenade"
     );
 
-    // ========== TALENT LOCATIONS HASHMAP (43100-43141) ==========
+    private static final Map<String, String> SPECIALIZATION_PARENTS = Map.ofEntries(
+            Map.entry("vhskill:heal_group", "vhskill:heal"),
+            Map.entry("vhskill:heal_cleanse", "vhskill:heal"),
+            Map.entry("vhskill:dash_damage", "vhskill:dash"),
+            Map.entry("vhskill:dash_warp", "vhskill:dash"),
+            Map.entry("vhskill:nova_slow", "vhskill:nova"),
+            Map.entry("vhskill:nova_dot", "vhskill:nova"),
+            Map.entry("vhskill:ghost_walk_spirit", "vhskill:ghost_walk"),
+            Map.entry("vhskill:mega_jump_drill", "vhskill:mega_jump"),
+            Map.entry("vhskill:mega_dig", "vhskill:mega_jump"),
+            Map.entry("vhskill:rampage_leech", "vhskill:rampage"),
+            Map.entry("vhskill:rampage_chain", "vhskill:rampage"),
+            Map.entry("vhskill:smite_archon", "vhskill:smite"),
+            Map.entry("vhskill:smite_thunderstorm", "vhskill:smite"),
+            Map.entry("vhskill:empower_ice_armor", "vhskill:empower"),
+            Map.entry("vhskill:empower_slowness_aura", "vhskill:empower"),
+            Map.entry("vhskill:vein_miner_fortune", "vhskill:vein_miner"),
+            Map.entry("vhskill:vein_miner_durability", "vhskill:vein_miner"),
+            Map.entry("vhskill:vein_miner_void", "vhskill:vein_miner"),
+            Map.entry("vhskill:hunter_javelin", "vhskill:hunter"),
+            Map.entry("vhskill:mana_barrier", "vhskill:mana_shield"),
+            Map.entry("vhskill:shield_bash", "vhskill:retribution"),
+            Map.entry("vhskill:mana_shield_retribution", "vhskill:retribution"),
+            Map.entry("vhskill:implode_life_tap", "vhskill:implode"),
+            Map.entry("vhskill:taunt_repel", "vhskill:taunt"),
+            Map.entry("vhskill:taunt_charm", "vhskill:taunt"),
+            Map.entry("vhskill:heros_landing", "vhskill:stonefall"),
+            Map.entry("vhskill:coldsnap", "vhskill:stonefall"),
+            Map.entry("vhskill:wrath_totem", "vhskill:totem"),
+            Map.entry("vhskill:spirit_totem", "vhskill:totem"),
+            Map.entry("vhskill:hatred_totem", "vhskill:totem"),
+            Map.entry("vhskill:javelin_piercing", "vhskill:javelin"),
+            Map.entry("vhskill:javelin_scatter", "vhskill:javelin"),
+            Map.entry("vhskill:shell_porcupine", "vhskill:shell"),
+            Map.entry("vhskill:shell_quill", "vhskill:shell"),
+            Map.entry("vhskill:fireball_volley", "vhskill:fireball"),
+            Map.entry("vhskill:fireball_fireshot", "vhskill:fireball"),
+            Map.entry("vhskill:storm_arrow_blizzard", "vhskill:storm_arrow"),
+            Map.entry("vhskill:battle_cry_spectral_cry", "vhskill:battle_cry"),
+            Map.entry("vhskill:battle_cry_lucky_cry", "vhskill:battle_cry"),
+            Map.entry("vhskill:ice_bolt_blast", "vhskill:ice_bolt"),
+            Map.entry("vhskill:arcane_rail", "vhskill:arcane"),
+            Map.entry("vhskill:earthquake_landmine", "vhskill:earthquake"),
+            Map.entry("vhskill:ball_lightning", "vhskill:chain_lightning"),
+            Map.entry("vhskill:toxic_vial", "vhskill:grenade")
+    );
+
+    // ========== TALENT LOCATIONS HASHMAP (43100-43174) ==========
     // Based on locations.py order
 
     private static final HashMap<String, Long> TALENT_LOCATIONS = new HashMap<>() {{
-        // From locations.py - 42 talents total
-        put("vhtalent:speed", TALENT_BASE_ID + 0);              // 43100
-        put("vhtalent:haste", TALENT_BASE_ID + 1);              // 43101
-        put("vhtalent:strength", TALENT_BASE_ID + 2);           // 43102
-        put("vhtalent:intelligence", TALENT_BASE_ID + 3);       // 43103
-        put("vhtalent:nucleus", TALENT_BASE_ID + 4);            // 43104
-        put("vhtalent:daze", TALENT_BASE_ID + 5);               // 43105
-        put("vhtalent:last_stand", TALENT_BASE_ID + 6);         // 43106
-        put("vhtalent:berserking", TALENT_BASE_ID + 7);         // 43107
-        put("vhtalent:sorcery", TALENT_BASE_ID + 8);            // 43108
-        put("vhtalent:witchery", TALENT_BASE_ID + 9);           // 43109
-        put("vhtalent:frozen_impact", TALENT_BASE_ID + 10);     // 43110
-        put("vhtalent:frostbite", TALENT_BASE_ID + 11);         // 43111
-        put("vhtalent:methodical", TALENT_BASE_ID + 12);        // 43112
-        put("vhtalent:depleted", TALENT_BASE_ID + 13);          // 43113
-        put("vhtalent:prudent", TALENT_BASE_ID + 14);           // 43114
-        put("vhtalent:stoneskin", TALENT_BASE_ID + 15);         // 43115
-        put("vhtalent:blight", TALENT_BASE_ID + 16);            // 43116
-        put("vhtalent:toxic_reaction", TALENT_BASE_ID + 17);    // 43117
-        put("vhtalent:arcana", TALENT_BASE_ID + 18);            // 43118
-        put("vhtalent:blazing", TALENT_BASE_ID + 19);           // 43119
-        put("vhtalent:lucky_momentum", TALENT_BASE_ID + 20);    // 43120
-        put("vhtalent:frenzy", TALENT_BASE_ID + 21);            // 43121
-        put("vhtalent:lightning_finesse", TALENT_BASE_ID + 22); // 43122
-        put("vhtalent:lightning_mastery", TALENT_BASE_ID + 23); // 43123
-        put("vhtalent:prime_amplification", TALENT_BASE_ID + 24); // 43124
-        put("vhtalent:hunters_instinct", TALENT_BASE_ID + 25);   // 43125
-        put("vhtalent:purist", TALENT_BASE_ID + 26);            // 43126
-        put("vhtalent:farmer_twerker", TALENT_BASE_ID + 27);    // 43127
-        put("vhtalent:bountiful_harvest", TALENT_BASE_ID + 28); // 43128
-        put("vhtalent:treasure_seeker", TALENT_BASE_ID + 29);   // 43129
-        put("vhtalent:horde_mastery", TALENT_BASE_ID + 30);     // 43130
-        put("vhtalent:champion_mastery", TALENT_BASE_ID + 31);  // 43131
-        put("vhtalent:assassin_mastery", TALENT_BASE_ID + 32);  // 43132
-        put("vhtalent:dungeon_mastery", TALENT_BASE_ID + 33);   // 43133
-        put("vhtalent:fatal_strike", TALENT_BASE_ID + 34);      // 43134
-        put("vhtalent:mana_steal", TALENT_BASE_ID + 35);        // 43135
-        put("vhtalent:life_leech", TALENT_BASE_ID + 36);        // 43136
-        put("vhtalent:cleave", TALENT_BASE_ID + 37);            // 43137
-        put("vhtalent:throw_power", TALENT_BASE_ID + 38);       // 43138
-        put("vhtalent:damage", TALENT_BASE_ID + 39);            // 43139
-        put("vhtalent:conduct", TALENT_BASE_ID + 40);           // 43140
-        put("vhtalent:ethereal", TALENT_BASE_ID + 41);          // 43141
+        put("vhtalent:intelligence", TALENT_BASE_ID + 0);
+        put("vhtalent:haste", TALENT_BASE_ID + 1);
+        put("vhtalent:strength", TALENT_BASE_ID + 2);
+        put("vhtalent:speed", TALENT_BASE_ID + 3);
+        put("vhtalent:reach", TALENT_BASE_ID + 4);
+        put("vhtalent:purist", TALENT_BASE_ID + 5);
+        put("vhtalent:stone_skin", TALENT_BASE_ID + 6);
+        put("vhtalent:critical_strike", TALENT_BASE_ID + 7);
+        put("vhtalent:fatal_strike_chance", TALENT_BASE_ID + 8);
+        put("vhtalent:fatal_strike_damage", TALENT_BASE_ID + 9);
+        put("vhtalent:thorns_chance", TALENT_BASE_ID + 10);
+        put("vhtalent:thorns_damage", TALENT_BASE_ID + 11);
+        put("vhtalent:horde_mastery", TALENT_BASE_ID + 12);
+        put("vhtalent:last_stand", TALENT_BASE_ID + 16);
+        put("vhtalent:berserking", TALENT_BASE_ID + 17);
+        put("vhtalent:sorcery", TALENT_BASE_ID + 18);
+        put("vhtalent:prime_amplification", TALENT_BASE_ID + 19);
+        put("vhtalent:bountiful_harvest", TALENT_BASE_ID + 20);
+        put("vhtalent:lightning_damage", TALENT_BASE_ID + 21);
+        put("vhtalent:lightning_stun", TALENT_BASE_ID + 22);
+        put("vhtalent:treasure_seeker", TALENT_BASE_ID + 23);
+        put("vhtalent:stoneskin", TALENT_BASE_ID + 24);
+        put("vhtalent:lingering_fumes", TALENT_BASE_ID + 25);
+        put("vhtalent:clean_escape", TALENT_BASE_ID + 26);
+        put("vhtalent:witchery", TALENT_BASE_ID + 27);
+        put("vhtalent:methodical", TALENT_BASE_ID + 28);
+        put("vhtalent:depleted", TALENT_BASE_ID + 29);
+        put("vhtalent:fatal_strike", TALENT_BASE_ID + 30);
+        put("vhtalent:fatal_strike_ii", TALENT_BASE_ID + 31);
+        put("vhtalent:mana_harvest", TALENT_BASE_ID + 32);
+        put("vhtalent:heart_fragments", TALENT_BASE_ID + 33);
+        put("vhtalent:mana_steal", TALENT_BASE_ID + 34);
+        put("vhtalent:mana_steal_ii", TALENT_BASE_ID + 35);
+        put("vhtalent:life_steal", TALENT_BASE_ID + 36);
+        put("vhtalent:life_steal_ii", TALENT_BASE_ID + 37);
+        put("vhtalent:cleave", TALENT_BASE_ID + 38);
+        put("vhtalent:explosive", TALENT_BASE_ID + 39);
+        put("vhtalent:prudent", TALENT_BASE_ID + 40);
+        put("vhtalent:alchemist", TALENT_BASE_ID + 41);
+        put("vhtalent:blizzard", TALENT_BASE_ID + 42);
+        put("vhtalent:frostbite", TALENT_BASE_ID + 43);
+        put("vhtalent:daze", TALENT_BASE_ID + 44);
+        put("vhtalent:nucleus", TALENT_BASE_ID + 45);
+        put("vhtalent:hunters_instinct", TALENT_BASE_ID + 46);
+        put("vhtalent:arcana", TALENT_BASE_ID + 47);
+        put("vhtalent:blazing", TALENT_BASE_ID + 48);
+        put("vhtalent:lucky_momentum", TALENT_BASE_ID + 49);
+        put("vhtalent:frenzy", TALENT_BASE_ID + 50);
+        put("vhtalent:voltaic_impact", TALENT_BASE_ID + 51);
+        put("vhtalent:axe_specialisation", TALENT_BASE_ID + 52);
+        put("vhtalent:sword_specialisation", TALENT_BASE_ID + 53);
+        put("vhtalent:blood_rush", TALENT_BASE_ID + 54);
+        put("vhtalent:blight", TALENT_BASE_ID + 55);
+        put("vhtalent:toxic_reaction", TALENT_BASE_ID + 56);
+        put("vhtalent:farmer_twerker", TALENT_BASE_ID + 60);
+        put("vhtalent:might_ii", TALENT_BASE_ID + 61);
+        put("vhtalent:battle_trance", TALENT_BASE_ID + 62);
+        put("vhtalent:intelligence_ii", TALENT_BASE_ID + 63);
+        put("vhtalent:haste_ii", TALENT_BASE_ID + 64);
+        put("vhtalent:speed_ii", TALENT_BASE_ID + 65);
+        put("vhtalent:prudent_ii", TALENT_BASE_ID + 66);
+        put("vhtalent:ethereal", TALENT_BASE_ID + 67);
+        put("vhtalent:quickening", TALENT_BASE_ID + 68);
+        put("vhtalent:trap_disarm", TALENT_BASE_ID + 69);
+        put("vhtalent:treasure_sense", TALENT_BASE_ID + 70);
+        put("vhtalent:executioner", TALENT_BASE_ID + 71);
+        put("vhtalent:assassin_mastery", TALENT_BASE_ID + 72);
+        put("vhtalent:dungeon_mastery", TALENT_BASE_ID + 73);
+        put("vhtalent:champion_mastery", TALENT_BASE_ID + 74);
     }};
 
-    // ========== MOD LOCATIONS HASHMAP (43200-43256) ==========
+    // ========== MOD LOCATIONS HASHMAP (43200-43257) ==========
     // Based on locations.py order
 
     private static final HashMap<String, Long> MOD_LOCATIONS = new HashMap<>() {{
-        // From locations.py - 57 mods total
+        // From locations.py - 58 mods total
         put("vhmod:colossal_chests", MOD_BASE_ID + 0);          // 43200
         put("vhmod:simple_storage_network", MOD_BASE_ID + 1);   // 43201
         put("vhmod:drawers", MOD_BASE_ID + 2);                  // 43202
@@ -240,6 +315,7 @@ public class VaultHuntersData {
         put("vhmod:map_markers", MOD_BASE_ID + 54);             // 43254
         put("vhmod:vault_map", MOD_BASE_ID + 55);               // 43255
         put("vhmod:vault_decks", MOD_BASE_ID + 56);             // 43256
+        put("vhmod:augment_station", MOD_BASE_ID + 57);         // 43257
     }};
 
     // ========== EXPERTISE LOCATIONS HASHMAP (43300-43315) ==========
@@ -251,7 +327,7 @@ public class VaultHuntersData {
         put("vhexpertise:fortunate", EXPERTISE_BASE_ID + 2);            // 43302
         put("vhexpertise:experienced", EXPERTISE_BASE_ID + 3);          // 43303
         put("vhexpertise:infuser", EXPERTISE_BASE_ID + 4);              // 43304
-        put("vhexpertise:crystalmancer", EXPERTISE_BASE_ID + 5);        // 43305
+        put("vhexpertise:mystic", EXPERTISE_BASE_ID + 5);               // 43305 - Crystalmancer
         put("vhexpertise:trinketer", EXPERTISE_BASE_ID + 6);            // 43306
         put("vhexpertise:divine", EXPERTISE_BASE_ID + 7);               // 43307
         put("vhexpertise:unbreakable", EXPERTISE_BASE_ID + 8);          // 43308
@@ -261,7 +337,7 @@ public class VaultHuntersData {
         put("vhexpertise:jeweler", EXPERTISE_BASE_ID + 12);             // 43312
         put("vhexpertise:artisan", EXPERTISE_BASE_ID + 13);             // 43313
         put("vhexpertise:bartering", EXPERTISE_BASE_ID + 14);           // 43314
-        put("vhexpertise:companions_loyalty", EXPERTISE_BASE_ID + 15); // 43315
+        put("vhexpertise:companion_loyalty", EXPERTISE_BASE_ID + 15); // 43315 - Companion's Loyalty
     }};
 
     // Milestone Checks - IDs 43400-43408
@@ -285,9 +361,9 @@ public class VaultHuntersData {
     // ==================== ITEM IDs (REWARDS) ====================
 
     // Filler/Progressive Items
-    public static final long ITEM_SKILL_POINT = 43500L;
-    public static final long ITEM_EXPERTISE_POINT = 43501L;
-    public static final long ITEM_KNOWLEDGE_STAR = 43502L;
+    public static final long ITEM_SKILL_POINT = 43707L;
+    public static final long ITEM_EXPERTISE_POINT = 43708L;
+    public static final long ITEM_KNOWLEDGE_STAR = 43709L;
     public static final long ITEM_VAULT_BRONZE = 43503L;
     public static final long ITEM_VAULT_SILVER = 43504L;
     public static final long ITEM_VAULT_GOLD = 43505L;
@@ -306,12 +382,23 @@ public class VaultHuntersData {
     public static final long ITEM_PROGRESSIVE_XP_SCALING = 43701L;
     public static final long ITEM_PROGRESSIVE_LOOT_SCALING = 43702L;
     public static final long ITEM_PROGRESSIVE_GEAR_RARITY = 43703L;
+    public static final long ITEM_PROGRESSIVE_ARTIFACT = 43704L;
+    public static final long ITEM_PROGRESSIVE_VAULT_TIME = 43705L;
+    public static final long ITEM_PROGRESSIVE_CRYSTAL_COST_REDUCTION = 43706L;
+    public static final long ITEM_PROGRESSIVE_BOUNTY = 43710L;
+    public static final long ITEM_PROGRESSIVE_BACKPACK_MOD = MOD_BASE_ID + 9;
+    public static final long ITEM_TRAP_MANA_LOSS = 33800L;
+    public static final long ITEM_TRAP_LOCKED_OUT = 33802L;
+    public static final long ITEM_TRAP_BUFF_ENEMIES = 33803L;
+    public static final long ITEM_TRAP_NERF_PLAYER = 33804L;
+    public static final long ITEM_TRAP_SILENCED = 33805L;
+    public static final long ITEM_TRAP_BOTTLE_DRAIN = 33806L;
 
     // ==================== DYNAMIC REGISTRATION ====================
 
-    private static long nextTalentId = TALENT_BASE_ID + 45; // Start after defined talents
+    private static long nextTalentId = TALENT_BASE_ID + 75; // Start after defined talents
     private static long nextExpertiseId = EXPERTISE_BASE_ID + 16;
-    private static long nextModId = MOD_BASE_ID + 57; // Start after defined mods
+    private static long nextModId = MOD_BASE_ID + 58; // Start after defined mods
 
     /**
      * Dynamically register a new talent if it doesn't exist
@@ -363,6 +450,7 @@ public class VaultHuntersData {
         all.putAll(MILESTONE_LOCATIONS);
         all.putAll(GOAL_LOCATIONS);
         all.putAll(QUEST_LOCATIONS);
+        all.putAll(BOUNTY_LOCATIONS);
         all.putAll(TRINKET_LOCATIONS);
         return all;
     }
@@ -390,6 +478,9 @@ public class VaultHuntersData {
         for (Map.Entry<String, Long> entry : QUEST_LOCATIONS.entrySet()) {
             if (entry.getValue() == locationId) return entry.getKey();
         }
+        for (Map.Entry<String, Long> entry : BOUNTY_LOCATIONS.entrySet()) {
+            if (entry.getValue() == locationId) return entry.getKey();
+        }
         for (Map.Entry<String, Long> entry : TRINKET_LOCATIONS.entrySet()) {
             if (entry.getValue() == locationId) return entry.getKey();
         }
@@ -400,9 +491,6 @@ public class VaultHuntersData {
      * Get location ID for a skill
      */
     public static Long getSkillLocationId(String skillName) {
-        if ("vhskill:chain_lightning".equals(skillName)) {
-            skillName = "vhskill:lightning_strike";
-        }
         if (SPECIALIZATION_SKILLS.contains(skillName)) {
             return 0L;
         }
@@ -411,6 +499,10 @@ public class VaultHuntersData {
 
     public static boolean isSpecializationSkill(String skillName) {
         return SPECIALIZATION_SKILLS.contains(skillName);
+    }
+
+    public static String getSpecializationParent(String specializationName) {
+        return SPECIALIZATION_PARENTS.get(specializationName);
     }
 
     /**
@@ -449,67 +541,54 @@ public class VaultHuntersData {
         return id;
     }
 
-    // ========== TALENT MAPPINGS (43100-43141) ==========
+    // ========== TALENT MAPPINGS (43100-43174) ==========
 // Use these in getTalentName() method
 
     private String getTalentName(long itemId) {
         String[] talents = {
-                // 43100-43109
-                "vhtalent:speed",              // 43100
-                "vhtalent:haste",              // 43101
-                "vhtalent:strength",           // 43102
-                "vhtalent:intelligence",       // 43103
-                "vhtalent:nucleus",            // 43104
-                "vhtalent:daze",               // 43105
-                "vhtalent:last_stand",         // 43106
-                "vhtalent:berserking",         // 43107
-                "vhtalent:sorcery",            // 43108
-                "vhtalent:witchery",           // 43109
-
-                // 43110-43119
-                "vhtalent:frozen_impact",      // 43110
-                "vhtalent:frostbite",          // 43111
-                "vhtalent:methodical",         // 43112
-                "vhtalent:depleted",           // 43113
-                "vhtalent:prudent",            // 43114
-                "vhtalent:stoneskin",          // 43115
-                "vhtalent:blight",             // 43116
-                "vhtalent:toxic_reaction",     // 43117
-                "vhtalent:arcana",             // 43118
-                "vhtalent:blazing",            // 43119
-
-                // 43120-43129
-                "vhtalent:lucky_momentum",     // 43120
-                "vhtalent:frenzy",             // 43121
-                "vhtalent:lightning_finesse",  // 43122
-                "vhtalent:lightning_mastery",  // 43123
-                "vhtalent:prime_amplification",// 43124
-                "vhtalent:hunters_instinct",  // 43125
-                "vhtalent:purist",             // 43126
-                "vhtalent:farmer_twerker",     // 43127
-                "vhtalent:bountiful_harvest",  // 43128
-                "vhtalent:treasure_seeker",    // 43129
-
-                // 43130-43141
-                "vhtalent:horde_mastery",      // 43130
-                "vhtalent:champion_mastery",   // 43131
-                "vhtalent:assassin_mastery",   // 43132
-                "vhtalent:dungeon_mastery",    // 43133
-                "vhtalent:fatal_strike",       // 43134
-                "vhtalent:mana_steal",         // 43135
-                "vhtalent:life_leech",         // 43136
-                "vhtalent:cleave",             // 43137
-                "vhtalent:throw_power",        // 43138
-                "vhtalent:damage",             // 43139
-                "vhtalent:conduct",            // 43140
-                "vhtalent:ethereal"            // 43141
+                "vhtalent:intelligence", "vhtalent:haste", "vhtalent:strength",
+                "vhtalent:speed", "vhtalent:reach", "vhtalent:purist",
+                "vhtalent:stone_skin", "vhtalent:critical_strike",
+                "vhtalent:fatal_strike_chance", "vhtalent:fatal_strike_damage",
+                "vhtalent:thorns_chance", "vhtalent:thorns_damage",
+                "vhtalent:horde_mastery", "vhtalent:unknown",
+                "vhtalent:unknown", "vhtalent:unknown",
+                "vhtalent:last_stand", "vhtalent:berserking",
+                "vhtalent:sorcery", "vhtalent:prime_amplification",
+                "vhtalent:bountiful_harvest", "vhtalent:lightning_damage",
+                "vhtalent:lightning_stun", "vhtalent:treasure_seeker",
+                "vhtalent:stoneskin", "vhtalent:lingering_fumes",
+                "vhtalent:clean_escape", "vhtalent:witchery",
+                "vhtalent:methodical", "vhtalent:depleted",
+                "vhtalent:fatal_strike", "vhtalent:fatal_strike_ii",
+                "vhtalent:mana_harvest", "vhtalent:heart_fragments",
+                "vhtalent:mana_steal", "vhtalent:mana_steal_ii",
+                "vhtalent:life_steal", "vhtalent:life_steal_ii",
+                "vhtalent:cleave", "vhtalent:explosive", "vhtalent:prudent",
+                "vhtalent:alchemist", "vhtalent:blizzard",
+                "vhtalent:frostbite", "vhtalent:daze", "vhtalent:nucleus",
+                "vhtalent:hunters_instinct", "vhtalent:arcana",
+                "vhtalent:blazing", "vhtalent:lucky_momentum",
+                "vhtalent:frenzy", "vhtalent:voltaic_impact",
+                "vhtalent:axe_specialisation", "vhtalent:sword_specialisation",
+                "vhtalent:blood_rush", "vhtalent:blight",
+                "vhtalent:toxic_reaction", "vhtalent:unknown",
+                "vhtalent:unknown", "vhtalent:unknown",
+                "vhtalent:farmer_twerker", "vhtalent:might_ii",
+                "vhtalent:battle_trance", "vhtalent:intelligence_ii",
+                "vhtalent:haste_ii", "vhtalent:speed_ii",
+                "vhtalent:prudent_ii", "vhtalent:ethereal",
+                "vhtalent:quickening", "vhtalent:trap_disarm",
+                "vhtalent:treasure_sense", "vhtalent:executioner",
+                "vhtalent:assassin_mastery", "vhtalent:dungeon_mastery",
+                "vhtalent:champion_mastery"
         };
 
         int index = (int)(itemId - 43100);
         return index >= 0 && index < talents.length ? talents[index] : "vhtalent:unknown";
     }
 
-// ========== MOD MAPPINGS (43200-43256) ==========
+// ========== MOD MAPPINGS (43200-43257) ==========
 // Use these in getModName() method
 
     private String getModName(long itemId) {
@@ -574,14 +653,15 @@ public class VaultHuntersData {
                 "vhmod:mob_spawners",              // 43248
                 "vhmod:phytogenic_insulator",      // 43249
 
-                // 43250-43256
+                // 43250-43257
                 "vhmod:potions",                   // 43250
                 "vhmod:mixtures",                  // 43251
                 "vhmod:brews",                     // 43252
                 "vhmod:vault_compass",             // 43253
                 "vhmod:map_markers",               // 43254
                 "vhmod:vault_map",                 // 43255
-                "vhmod:vault_decks"                // 43256
+                "vhmod:vault_decks",               // 43256
+                "vhmod:augment_station"            // 43257
         };
 
         int index = (int)(itemId - 43200);
@@ -598,7 +678,7 @@ public class VaultHuntersData {
                 "vhexpertise:fortunate",             // 43302
                 "vhexpertise:experienced",           // 43303
                 "vhexpertise:infuser",               // 43304
-                "vhexpertise:crystalmancer",         // 43305
+                "vhexpertise:mystic",                // 43305 - Crystalmancer
                 "vhexpertise:trinketer",             // 43306
                 "vhexpertise:divine",                // 43307
                 "vhexpertise:unbreakable",           // 43308
@@ -608,7 +688,7 @@ public class VaultHuntersData {
                 "vhexpertise:jeweler",               // 43312
                 "vhexpertise:artisan",               // 43313
                 "vhexpertise:bartering",             // 43314
-                "vhexpertise:companions_loyalty"    // 43315
+                "vhexpertise:companion_loyalty"     // 43315 - Companion's Loyalty
         };
 
         int index = (int)(itemId - 43300);
@@ -682,6 +762,9 @@ public class VaultHuntersData {
         if (QUEST_LOCATIONS.containsKey(locationName)) {
             return QUEST_LOCATIONS.get(locationName);
         }
+        if (BOUNTY_LOCATIONS.containsKey(locationName)) {
+            return BOUNTY_LOCATIONS.get(locationName);
+        }
         if (TRINKET_LOCATIONS.containsKey(locationName)) {
             return TRINKET_LOCATIONS.get(locationName);
         }
@@ -702,31 +785,45 @@ public class VaultHuntersData {
             put("Quest Completion " + (i + 1), 43500L + i);
         }
     }};
+    public static final Map<String, Long> BOUNTY_LOCATIONS = new HashMap<String, Long>() {{
+        for (int i = 0; i < 200; i++) {
+            put("Bounty Completion " + (i + 1), i < 50 ? 43650L + i : 44500L + i - 50);
+        }
+    }};
     public static final Map<String, Long> TRINKET_LOCATIONS = new HashMap<>() {{
         put("Trinket: Carapace", 43600L);
         put("Trinket: Portable Cat", 43601L);
+        put("Trinket: Cat in a Jar", 43601L);
         put("Trinket: Slimey", 43602L);
         put("Trinket: Prismatic Feather", 43603L);
+        put("Trinket: Chromatic Feather", 43603L);
         put("Trinket: Ender Anchor", 43604L);
         put("Trinket: Elvish Air", 43605L);
+        put("Trinket: Elven Socks", 43605L);
         put("Trinket: Gluttony Pendant", 43606L);
         put("Trinket: Golden Burger", 43607L);
         put("Trinket: The Frog", 43608L);
+        put("Trinket: Healing Salve", 43608L);
         put("Trinket: Treasure Goggles", 43609L);
+        put("Trinket: Night Vision Goggles", 43609L);
         put("Trinket: Velara's Petal", 43610L);
         put("Trinket: Wendarr's Hourglass", 43611L);
         put("Trinket: Stone of Jordan", 43612L);
         put("Trinket: Wings", 43613L);
         put("Trinket: Chromatic Powder", 43614L);
         put("Trinket: Clover", 43615L);
-        put("Trinket: Cufflings", 43616L);
+        put("Trinket: Cufflinks", 43616L);
         put("Trinket: Spellbook", 43617L);
         put("Trinket: Crystal Ball", 43618L);
         put("Trinket: Giant's Heart", 43619L);
         put("Trinket: Idona's Pendant", 43620L);
+        put("Trinket: Idona's Blade", 43620L);
         put("Trinket: Picture of a Lucky Goose", 43621L);
+        put("Trinket: Lucky Goose", 43621L);
         put("Trinket: Phylactery", 43622L);
         put("Trinket: Tenos' Necklace", 43623L);
+        put("Trinket: Tenos Charm", 43623L);
+        put("Trinket: Tenos' Charm", 43623L);
     }};
 
 }

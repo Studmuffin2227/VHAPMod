@@ -1,13 +1,14 @@
 package studmuffin.vhapmod.event;
 
 import studmuffin.vhapmod.APGearRarityManager;
+import studmuffin.vhapmod.APBoonManager;
+import studmuffin.vhapmod.ModSounds;
 import studmuffin.vhapmod.VHDataReader;
 import studmuffin.vhapmod.VaultHuntersAPMod;
 import studmuffin.vhapmod.VaultHuntersManager;
 import studmuffin.vhapmod.item.ModItems;
 import iskallia.vault.core.event.common.ChestGenerationEvent;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -82,31 +83,17 @@ public class VaultChestEventListener {
             }
         }
 
-        float bitChance = manager.getNormalChestWeight();
+        float bitChance = Math.min(1.0F, manager.getNormalChestWeight() * APBoonManager.bitChanceMultiplier(serverPlayer));
         if (RANDOM.nextFloat() >= bitChance) {
             LOGGER.debug("Chest didn't win Archipela-bit lottery ({}% chance)", bitChance * 100);
             return;
         }
 
-        int amount = 1 + RANDOM.nextInt(3);
+        int amount = 2 + RANDOM.nextInt(5);
         LOGGER.info("Player {} found {} Archipela-bit(s) from chest at pos {} ({}% chance)",
                 serverPlayer.getName().getString(), amount, chestPos, (bitChance * 100));
-        ItemStack inventoryCopy = ModItems.getBitsStack(amount);
-        boolean added = serverPlayer.getInventory().add(inventoryCopy);
-
-        if (!added || !inventoryCopy.isEmpty()) {
-            ItemStack dropStack = inventoryCopy.copy();
-            ItemEntity dropped = serverPlayer.drop(dropStack, false);
-            if (dropped != null) {
-                dropped.setNoPickUpDelay();
-                dropped.setOwner(serverPlayer.getUUID());
-                LOGGER.debug("Dropped Archipela-bits (inventory full)");
-            } else {
-                LOGGER.warn("Failed to add or drop Archipela-bits for {}", serverPlayer.getName().getString());
-            }
-        } else {
-            LOGGER.debug("Added Archipela-bits to player inventory");
-        }
+        ModItems.giveBits(serverPlayer, amount);
+        ModSounds.playArchipelaBitsGain(serverPlayer);
     }
 
     /**

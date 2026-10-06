@@ -6,6 +6,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.TextComponent;
 import net.minecraft.server.level.ServerPlayer;
@@ -24,6 +25,7 @@ public class APCommands {
             Commands.literal("apconnect")
                 .requires(source -> source.hasPermission(0)) // OP level 2
                 .then(Commands.argument("host", StringArgumentType.string())
+                    .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(new String[]{"archipelago.gg"}, builder))
                     .then(Commands.argument("port", IntegerArgumentType.integer(1, 65535))
                         .then(Commands.argument("slotName", StringArgumentType.string())
                             .executes(ctx -> connect(ctx, ""))
@@ -45,6 +47,21 @@ public class APCommands {
             Commands.literal("apstatus")
                 .executes(APCommands::status)
         );
+
+        dispatcher.register(
+            Commands.literal("apfiller")
+                .requires(source -> source.hasPermission(2))
+                .executes(APCommands::fillerStatus)
+                .then(Commands.argument("mode", StringArgumentType.word())
+                    .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(new String[]{"single", "online", "all"}, builder))
+                    .executes(APCommands::setFillerMode)
+                )
+        );
+
+        registerChatModeCommands(dispatcher, "apchat", true);
+        registerChatModeCommands(dispatcher, "APchat", true);
+        registerChatModeCommands(dispatcher, "mcchat", false);
+        registerChatModeCommands(dispatcher, "MCchat", false);
 
         dispatcher.register(
             Commands.literal("apdumpskills")
@@ -77,6 +94,48 @@ public class APCommands {
                 )
         );
     }
+
+    private static void registerChatModeCommands(
+            CommandDispatcher<CommandSourceStack> dispatcher,
+            String command,
+            boolean apChat
+    ) {
+        dispatcher.register(
+                Commands.literal(command)
+                        .executes(ctx -> setChatMode(ctx, apChat))
+        );
+    }
+
+    private static int setChatMode(CommandContext<CommandSourceStack> ctx, boolean apChat) {
+        try {
+            ServerPlayer player = ctx.getSource().getPlayerOrException();
+            if (apChat) {
+                APWebSocketClient client = VaultHuntersAPMod.getAPClient();
+                if (client == null || !client.isConnected()) {
+                    ctx.getSource().sendFailure(
+                            new TextComponent("Cannot switch to AP chat while disconnected.").withStyle(ChatFormatting.RED)
+                    );
+                    return 0;
+                }
+                APChatModeManager.useAPChat(player);
+                ctx.getSource().sendSuccess(
+                        new TextComponent("Chat mode: Archipelago. Messages and !commands will be sent to AP.")
+                                .withStyle(ChatFormatting.AQUA),
+                        false
+                );
+            } else {
+                APChatModeManager.useMinecraftChat(player);
+                ctx.getSource().sendSuccess(
+                        new TextComponent("Chat mode: Minecraft.").withStyle(ChatFormatting.GREEN),
+                        false
+                );
+            }
+            return 1;
+        } catch (Exception e) {
+            ctx.getSource().sendFailure(new TextComponent("This command must be used by a player."));
+            return 0;
+        }
+    }
     
     private static int connect(CommandContext<CommandSourceStack> ctx, String password) {
         String host = StringArgumentType.getString(ctx, "host");
@@ -90,8 +149,8 @@ public class APCommands {
             return 0;
         }
         
-        if (client.isConnected()) {
-            ctx.getSource().sendFailure(new TextComponent("Already connected! Use /apdisconnect first.").withStyle(ChatFormatting.RED));
+        if (client.isConnectionActive()) {
+            ctx.getSource().sendFailure(new TextComponent("Already connected or connecting! Use /apdisconnect first.").withStyle(ChatFormatting.RED));
             return 0;
         }
 
@@ -108,7 +167,10 @@ public class APCommands {
         config.port = port;
         config.slotName = slotName;
         config.password = password != null ? password : "";
-        config.autoConnect = true;
+        config.autoConnect = false;
+        if (ctx.getSource().getEntity() instanceof ServerPlayer player) {
+            config.targetPlayerUuid = player.getUUID().toString();
+        }
         config.save();
         
         client.connect(host, port, slotName, password).whenComplete((unused, throwable) -> {
@@ -125,6 +187,42 @@ public class APCommands {
         
         return 1;
     }
+
+    private static int fillerStatus(CommandContext<CommandSourceStack> ctx) {
+        APWebSocketClient client = VaultHuntersAPMod.getAPClient();
+        if (client == null) {
+            ctx.getSource().sendFailure(new TextComponent("AP client not initialized!").withStyle(ChatFormatting.RED));
+            return 0;
+        }
+
+        ctx.getSource().sendSuccess(
+                new TextComponent("AP filler recipient mode: " + client.getFillerRecipientMode()).withStyle(ChatFormatting.AQUA),
+                false
+        );
+        return 1;
+    }
+
+    private static int setFillerMode(CommandContext<CommandSourceStack> ctx) {
+        APWebSocketClient client = VaultHuntersAPMod.getAPClient();
+        if (client == null) {
+            ctx.getSource().sendFailure(new TextComponent("AP client not initialized!").withStyle(ChatFormatting.RED));
+            return 0;
+        }
+
+        String mode = StringArgumentType.getString(ctx, "mode");
+        if (!client.setFillerRecipientMode(mode)) {
+            ctx.getSource().sendFailure(
+                    new TextComponent("Invalid filler mode. Use single, online, or all.").withStyle(ChatFormatting.RED)
+            );
+            return 0;
+        }
+
+        ctx.getSource().sendSuccess(
+                new TextComponent("AP filler recipient mode set to " + client.getFillerRecipientMode()).withStyle(ChatFormatting.GREEN),
+                true
+        );
+        return 1;
+    }
     
     private static int disconnect(CommandContext<CommandSourceStack> ctx) {
         APWebSocketClient client = VaultHuntersAPMod.getAPClient();
@@ -134,7 +232,7 @@ public class APCommands {
             return 0;
         }
         
-        if (!client.isConnected()) {
+        if (!client.isConnectionActive()) {
             ctx.getSource().sendFailure(new TextComponent("Not connected!").withStyle(ChatFormatting.RED));
             return 0;
         }

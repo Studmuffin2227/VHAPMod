@@ -6,15 +6,27 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.event.world.BlockEvent;
+import net.minecraftforge.event.ServerChatEvent;
+import net.minecraftforge.event.entity.player.EntityItemPickupEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.entity.living.LivingDeathEvent;
+import net.minecraftforge.event.entity.EntityJoinWorldEvent;
+import iskallia.vault.event.event.VaultJoinEvent;
+import iskallia.vault.event.event.BountyCompleteEvent;
+import iskallia.vault.entity.entity.VaultFighterEntity;
+import iskallia.vault.world.data.ServerVaults;
+import net.minecraft.network.chat.TextComponent;
+import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import studmuffin.vhapmod.item.ArchipelaPouchItem;
 import studmuffin.vhapmod.item.ModItems;
 
 import java.util.Locale;
+import java.util.List;
 import java.util.Random;
 
 import static studmuffin.vhapmod.APSkillLockManager.syncToClient;
@@ -34,6 +46,36 @@ public class VaultEventHandler {
     }
 
     // ==================== FORGE EVENTS ====================
+
+    @SubscribeEvent
+    public static void onItemPickup(EntityItemPickupEvent event) {
+        if (!(event.getPlayer() instanceof ServerPlayer player)) {
+            return;
+        }
+
+        ItemEntity itemEntity = event.getItem();
+        ItemStack pickedUp = itemEntity.getItem();
+        if (!pickedUp.is(ModItems.ARCHIPELA_BITS.get()) || pickedUp.isEmpty()) {
+            return;
+        }
+
+        int remaining = pickedUp.getCount();
+        for (int i = 0; i < player.getInventory().getContainerSize() && remaining > 0; i++) {
+            ItemStack stack = player.getInventory().getItem(i);
+            if (stack.is(ModItems.ARCHIPELA_POUCH.get())) {
+                remaining = ArchipelaPouchItem.addBits(stack, remaining);
+            }
+        }
+
+        if (remaining != pickedUp.getCount()) {
+            player.getInventory().setChanged();
+            pickedUp.setCount(remaining);
+            if (remaining <= 0) {
+                itemEntity.discard();
+                event.setCanceled(true);
+            }
+        }
+    }
 
     /**
      * Track when players log in - connect to AP and check their VH data
@@ -59,13 +101,26 @@ public class VaultEventHandler {
             // Check player progression against AP
             checkPlayerProgression(player);
             if (manager != null) {
+                manager.restoreWorldProgression(player.getServer());
                 manager.grantStartingKitIfEnabled(player);
             }
 
             APWebSocketClient apClient = VaultHuntersAPMod.getAPClient();
             if (apClient != null) {
+                apClient.registerKnownPlayer(player);
+                apClient.claimTargetPlayerIfUnset(player);
+                apClient.flushPendingFillerItems(player);
                 apClient.flushPendingReceivedItems();
             }
+            if (APChatModeManager.load(player)) {
+                player.sendMessage(
+                        new net.minecraft.network.chat.TextComponent(
+                                "[AP] Restored Archipelago chat mode. Use /mcchat to return to Minecraft chat."
+                        ).withStyle(net.minecraft.ChatFormatting.AQUA),
+                        player.getUUID()
+                );
+            }
+            DeathLinkCurseManager.applyPendingCurses(player);
 
             // Sync Client To Server
             syncToClient(player);
@@ -81,7 +136,97 @@ public class VaultEventHandler {
             LOGGER.info("Player {} logged out", player.getName().getString());
 
             VHProgressionTracker.onPlayerLogout(player);
+
+            if (player.getServer() != null) {
+                player.getServer().execute(() ->
+                        VaultHuntersAPMod.disconnectFromAPIfNoPlayersOnline(player.getServer()));
+            }
         }
+    }
+
+    @SubscribeEvent
+    public static void onServerChat(ServerChatEvent event) {
+        ServerPlayer player = event.getPlayer();
+        if (!APChatModeManager.isUsingAPChat(player.getUUID())) {
+            return;
+        }
+
+        event.setCanceled(true);
+        APWebSocketClient client = VaultHuntersAPMod.getAPClient();
+        if (client == null || !client.sendChat(event.getMessage())) {
+            player.sendMessage(
+                    new net.minecraft.network.chat.TextComponent(
+                            "[AP] Message not sent: disconnected. Use /mcchat to return to Minecraft chat."
+                    ).withStyle(net.minecraft.ChatFormatting.RED),
+                    player.getUUID()
+            );
+        }
+    }
+
+    @SubscribeEvent
+    public static void onPlayerDeath(LivingDeathEvent event) {
+        if (event.getEntityLiving() instanceof ServerPlayer player) {
+            APWebSocketClient client = VaultHuntersAPMod.getAPClient();
+            if (client != null) {
+                client.onPlayerDeath(player);
+            }
+        }
+    }
+
+    @SubscribeEvent
+    public static void onBountyComplete(BountyCompleteEvent event) {
+        VaultHuntersManager activeManager = manager != null ? manager : VaultHuntersAPMod.getManager();
+        if (!(event.getPlayer() instanceof ServerPlayer player) || activeManager == null) {
+            return;
+        }
+        activeManager.onBountyCompleted(player);
+    }
+
+    @SubscribeEvent
+    public static void onVaultJoin(VaultJoinEvent event) {
+        ServerPlayer player = event.getPlayer();
+        DeathLinkCurseManager.applyPendingCurses(player);
+        APTrapManager.armVaultTrapTimer(player, event.getVault());
+        APBoonManager.rollRandomVaultBoon(player);
+        APBlessingManager.activatePendingBlessings(player);
+    }
+
+    @SubscribeEvent
+    public static void onPlayerTick(TickEvent.PlayerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END || !(event.player instanceof ServerPlayer player)) {
+            return;
+        }
+        if (player.tickCount % 100 != 0) {
+            return;
+        }
+        APTrapManager.tickVaultTraps(player);
+        APTrapManager.applyPendingCrystalCostTrap(player);
+        APBoonManager.clearIfOutsideVault(player);
+        APBlessingManager.clearIfOutsideVault(player);
+    }
+
+    @SubscribeEvent
+    public static void onEntityJoinWorld(EntityJoinWorldEvent event) {
+        if (!(event.getEntity() instanceof VaultFighterEntity fighter) || event.getWorld().isClientSide()) {
+            return;
+        }
+        if (!ServerVaults.isInVault(event.getWorld())
+                && !"the_vault".equals(event.getWorld().dimension().location().getNamespace())
+                && !event.getWorld().dimension().location().getPath().contains("vault")) {
+            return;
+        }
+
+        APWebSocketClient client = VaultHuntersAPMod.getAPClient();
+        if (client == null || fighter.hasCustomName()) {
+            return;
+        }
+        List<String> names = client.getKnownPlayerNames();
+        if (names.isEmpty()) {
+            return;
+        }
+
+        fighter.setCustomName(new TextComponent(names.get(RANDOM.nextInt(names.size()))));
+        fighter.setCustomNameVisible(true);
     }
 
     @SubscribeEvent
@@ -99,13 +244,16 @@ public class VaultEventHandler {
         String path = blockId.getPath().toLowerCase(Locale.ROOT);
         float chestChance = activeManager.getNormalChestWeight();
         if (isCoinPile(event.getState(), path)) {
-            rollBits(player, chestChance / 5.0F, 1, 1, "coin pile");
+            rollBits(player, chestChance / 3.0F, 2, 4, "coin pile");
         } else if (isVaultOre(event.getState(), path)) {
             rollBits(player, chestChance * 0.9F, 3, 5, "ore");
         }
     }
 
     private static boolean isVaultOre(BlockState state, String path) {
+        if (path.contains("chromatic_iron")) {
+            return false;
+        }
         return state.getBlock().getClass().getName().contains("VaultOreBlock")
                 || (path.contains("ore") && !path.contains("decor"));
     }
@@ -119,19 +267,14 @@ public class VaultEventHandler {
     }
 
     private static void rollBits(ServerPlayer player, float chance, int min, int max, String source) {
-        if (RANDOM.nextFloat() >= chance) {
+        float effectiveChance = Math.min(1.0F, chance * APBoonManager.bitChanceMultiplier(player));
+        if (RANDOM.nextFloat() >= effectiveChance) {
             return;
         }
 
         int amount = min + RANDOM.nextInt(max - min + 1);
-        ItemStack stack = ModItems.getBitsStack(amount);
-        if (!player.getInventory().add(stack)) {
-            ItemEntity dropped = player.drop(stack, false);
-            if (dropped != null) {
-                dropped.setNoPickUpDelay();
-                dropped.setOwner(player.getUUID());
-            }
-        }
+        ModItems.giveBits(player, amount);
+        ModSounds.playArchipelaBitsGain(player);
         LOGGER.info("Gave {} Archipela-bit(s) from {}", amount, source);
     }
 
@@ -143,6 +286,7 @@ public class VaultEventHandler {
         if (event.getEntity() instanceof ServerPlayer player) {
             // We'll check level milestones periodically
             checkLevelMilestones(player);
+            DeathLinkCurseManager.applyPendingCurses(player);
         }
     }
 

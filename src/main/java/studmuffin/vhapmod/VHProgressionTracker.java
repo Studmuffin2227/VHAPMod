@@ -51,6 +51,8 @@ public class VHProgressionTracker {
 
         // Check all online players
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            DeathLinkCurseManager.applyPendingCurses(player);
+
             // ENFORCE SKILL LOCKS FIRST
             VHSkillEnforcer.enforceSkillLocks(player);
 
@@ -70,12 +72,14 @@ public class VHProgressionTracker {
         Set<String> currentAbilities = new HashSet<>();
         Set<String> currentTalents = new HashSet<>();
         Set<String> currentMods = new HashSet<>();
+        Set<String> currentExpertises = new HashSet<>();
 
         try {
             currentLevel = VHDataReader.getPlayerLevel(player);
             currentAbilities = new HashSet<>(VHDataReader.getUnlockedAbilities(player));
             currentTalents = new HashSet<>(VHDataReader.getUnlockedTalents(player));
             currentMods = new HashSet<>(VHDataReader.getResearchedMods(player));
+            currentExpertises = new HashSet<>(VHDataReader.getUnlockedExpertises(player));
         } catch (Exception e) {
             // Silently skip if VH data not available
             // This happens in creative mode or non-vault worlds
@@ -87,7 +91,7 @@ public class VHProgressionTracker {
 
         if (cache == null) {
             // First time seeing this player - just cache their current state
-            cache = new PlayerProgressionCache(currentLevel, currentAbilities, currentTalents, currentMods);
+            cache = new PlayerProgressionCache(currentLevel, currentAbilities, currentTalents, currentMods, currentExpertises);
             playerCache.put(uuid, cache);
             LOGGER.info("Initialized progression cache for " + player.getName().getString());
             return;
@@ -95,32 +99,45 @@ public class VHProgressionTracker {
 
         boolean anyNewUnlock = false;
 
-        // Check for NEW abilities
-        for (String ability : currentAbilities) {
-            if (!cache.abilities.contains(ability)) {
-                LOGGER.info("NEW ABILITY UNLOCKED: " + player.getName().getString() + " learned " + ability);
-                String normalizedName = APSkillLockManager.canonicalSkillKey(ability);
-                manager.onSkillUnlocked(player, normalizedName);
-                anyNewUnlock = true;
-            }
-        }
+        APWebSocketClient client = VaultHuntersAPMod.getAPClient();
+        boolean skillUnlockChecksEnabled = client == null || client.areSkillUnlockChecksEnabled();
 
-        // Check for NEW talents
-        for (String talent : currentTalents) {
-            if (!cache.talents.contains(talent)) {
-                LOGGER.info("NEW TALENT UNLOCKED: " + player.getName().getString() + " learned " + talent);
-                String normalizedName = APSkillLockManager.canonicalTalentKey(talent);
-                manager.onTalentUnlocked(player, normalizedName);
-                anyNewUnlock = true;
+        if (skillUnlockChecksEnabled) {
+            // Check for NEW abilities
+            for (String ability : currentAbilities) {
+                if (!cache.abilities.contains(ability)) {
+                    LOGGER.info("NEW ABILITY UNLOCKED: " + player.getName().getString() + " learned " + ability);
+                    String normalizedName = APSkillLockManager.canonicalSkillKey(ability);
+                    manager.onSkillUnlocked(player, normalizedName);
+                    anyNewUnlock = true;
+                }
             }
-        }
 
-        // Check for NEW researched mods
-        for (String mod : currentMods) {
-            if (!cache.mods.contains(mod)) {
-                LOGGER.info("NEW MOD RESEARCHED: " + player.getName().getString() + " researched " + mod);
-                String normalizedName = APSkillLockManager.canonicalModKey(mod);
-                manager.onModUnlocked(player, normalizedName);
+            // Check for NEW talents
+            for (String talent : currentTalents) {
+                if (!cache.talents.contains(talent)) {
+                    LOGGER.info("NEW TALENT UNLOCKED: " + player.getName().getString() + " learned " + talent);
+                    String normalizedName = APSkillLockManager.canonicalTalentKey(talent);
+                    manager.onTalentUnlocked(player, normalizedName);
+                    anyNewUnlock = true;
+                }
+            }
+
+            // Check for NEW researched mods
+            for (String mod : currentMods) {
+                if (!cache.mods.contains(mod)) {
+                    LOGGER.info("NEW MOD RESEARCHED: " + player.getName().getString() + " researched " + mod);
+                    String normalizedName = APSkillLockManager.canonicalModKey(mod);
+                    manager.onModUnlocked(player, normalizedName);
+                }
+            }
+
+            for (String expertise : currentExpertises) {
+                if (!cache.expertises.contains(expertise)) {
+                    LOGGER.info("NEW EXPERTISE UNLOCKED: {} learned {}", player.getName().getString(), expertise);
+                    manager.onExpertiseUnlocked(player, APSkillLockManager.canonicalExpertiseKey(expertise));
+                    anyNewUnlock = true;
+                }
             }
         }
 
@@ -138,7 +155,6 @@ public class VHProgressionTracker {
             }
 
             // Check if goal level reached
-            APWebSocketClient client = VaultHuntersAPMod.getAPClient();
             if (client != null) {
                 client.checkGoalReached(player);
             }
@@ -155,6 +171,7 @@ public class VHProgressionTracker {
         cache.abilities = currentAbilities;
         cache.talents = currentTalents;
         cache.mods = currentMods;
+        cache.expertises = currentExpertises;
     }
 
     /**
@@ -182,14 +199,13 @@ public class VHProgressionTracker {
             return;
         }
 
-        APProgressData progressData = APProgressData.get(player.getServer());
-        if (progressData.getCompletedQuestCount() >= manager.getTotalQuestChecks()) {
+        int completedQuestCount = manager.claimNextQuestCompletion(player);
+        if (completedQuestCount <= 0) {
             LOGGER.info("Ignoring quest completion for {}; configured quest checks are exhausted ({})",
                     player.getName().getString(), manager.getTotalQuestChecks());
             return;
         }
 
-        int completedQuestCount = progressData.incrementQuestCount();
         String locationName = "Quest Completion " + completedQuestCount;
 
         manager.onQuestCompleted(player, locationName);
@@ -204,12 +220,14 @@ public class VHProgressionTracker {
         Set<String> abilities;
         Set<String> talents;
         Set<String> mods;
+        Set<String> expertises;
 
-        PlayerProgressionCache(int level, Set<String> abilities, Set<String> talents, Set<String> mods) {
+        PlayerProgressionCache(int level, Set<String> abilities, Set<String> talents, Set<String> mods, Set<String> expertises) {
             this.level = level;
             this.abilities = abilities;
             this.talents = talents;
             this.mods = mods;
+            this.expertises = expertises;
         }
     }
 }
